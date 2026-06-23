@@ -1,0 +1,10 @@
+---
+description: Cursor 上下文入口（只指向仓库 canonical）
+alwaysApply: true
+---
+
+# Cursor Entry
+
+本文件是 Cursor 的入口适配层，不是仓库规范正文。完整权威顺序、执行口径、验证分层见仓库根 `AGENTS.md` + `.codex/playbooks/*`。规则冲突时以 canonical 为准。
+
+**每次任务**：先读 `.codex/playbooks/harness-workflow.md`（默认 Tier 与命令上限）。**子代理**：父 Agent 见 `subagent-delegation.mdc`（有 Task 则委派，无 Task 须提示换模型）。**大任务 / refactor / cross-app**：再读 `session-orchestration.md`，维护 `docs/exec-plans/active/<TASK-ID>.md`；结束用 `handoff`，续作用 `start-phase`。

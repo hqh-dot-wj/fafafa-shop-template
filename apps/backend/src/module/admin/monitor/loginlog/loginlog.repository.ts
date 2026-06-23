@@ -1,0 +1,135 @@
+import { Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import { Prisma, SysLogininfor, Status } from '@prisma/client';
+import { BaseRepository } from 'src/common/repository/base.repository';
+import { PrismaService } from 'src/prisma/prisma.service';
+
+/**
+ * 登录日志仓储层
+ *
+ * @description 封装登录日志的数据访问逻辑
+ */
+@Injectable()
+export class LoginlogRepository extends BaseRepository<
+  SysLogininfor,
+  Prisma.SysLogininforCreateInput,
+  Prisma.SysLogininforUpdateInput,
+  Prisma.SysLogininforDelegate
+> {
+  constructor(prisma: PrismaService, cls: ClsService) {
+    super(prisma, cls, 'sysLogininfor');
+  }
+
+  /**
+   * 分页查询登录日志
+   */
+  async findPageWithFilter(
+    where: Prisma.SysLogininforWhereInput,
+    skip: number,
+    take: number,
+    orderBy?: Prisma.SysLogininforOrderByWithRelationInput,
+  ): Promise<{ list: SysLogininfor[]; total: number }> {
+    const scopedWhere = this.scopeReadWhere(where as object) as Prisma.SysLogininforWhereInput;
+    const [list, total] = await this.prisma.$transaction([
+      this.delegate.findMany({
+        where: scopedWhere,
+        skip,
+        take,
+        orderBy: orderBy || { loginTime: 'desc' },
+      }),
+      this.delegate.count({ where: scopedWhere }),
+    ]);
+
+    return { list, total };
+  }
+
+  /**
+   * 清空登录日志
+   */
+  async truncate(): Promise<void> {
+    await this.prisma.$executeRawUnsafe('TRUNCATE TABLE "SysLogininfor" RESTART IDENTITY CASCADE');
+  }
+
+  /**
+   * 批量删除指定天数之前的日志
+   */
+  async deleteByDays(days: number): Promise<number> {
+    const beforeDate = new Date();
+    beforeDate.setDate(beforeDate.getDate() - days);
+
+    const result = await this.prisma.sysLogininfor.deleteMany({
+      where: {
+        loginTime: {
+          lt: beforeDate,
+        },
+      },
+    });
+
+    return result.count;
+  }
+
+  /**
+   * 根据用户名查询登录历史
+   */
+  async findByUserName(userName: string, limit: number = 10): Promise<SysLogininfor[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({ userName }) as Prisma.SysLogininforWhereInput,
+      take: limit,
+      orderBy: { loginTime: 'desc' },
+    });
+  }
+
+  /**
+   * 根据IP地址查询登录历史
+   */
+  async findByIpaddr(ipaddr: string, limit: number = 10): Promise<SysLogininfor[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({ ipaddr }) as Prisma.SysLogininforWhereInput,
+      take: limit,
+      orderBy: { loginTime: 'desc' },
+    });
+  }
+
+  /**
+   * 统计登录成功次数
+   */
+  async countSuccessLogin(userName?: string): Promise<number> {
+    const where: Prisma.SysLogininforWhereInput = {
+      status: Status.NORMAL, // 0表示成功
+    };
+
+    if (userName) {
+      where.userName = userName;
+    }
+
+    return this.delegate.count({ where: this.scopeReadWhere(where as object) as Prisma.SysLogininforWhereInput });
+  }
+
+  /**
+   * 统计登录失败次数
+   */
+  async countFailedLogin(userName?: string): Promise<number> {
+    const where: Prisma.SysLogininforWhereInput = {
+      status: Status.STOP, // 1表示失败
+    };
+
+    if (userName) {
+      where.userName = userName;
+    }
+
+    return this.delegate.count({
+      where: this.scopeReadWhere(where as object) as Prisma.SysLogininforWhereInput,
+    });
+  }
+
+  /**
+   * 查询最近的登录日志
+   */
+  async findRecentLogins(limit: number = 10): Promise<SysLogininfor[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({}) as Prisma.SysLogininforWhereInput,
+      take: limit,
+      orderBy: { loginTime: 'desc' },
+    });
+  }
+}

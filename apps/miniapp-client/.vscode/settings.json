@@ -1,0 +1,91 @@
+{
+  "files.associations": {
+    "pages.json": "jsonc",
+    "manifest.json": "jsonc"
+  },
+
+  "stylelint.enable": false,
+  "css.validate": false,
+  "scss.validate": false,
+  "less.validate": false,
+
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "README.md": "index.html,favicon.ico,robots.txt,CHANGELOG.md",
+    "docker.md": "Dockerfile,docker*.md,nginx*,.dockerignore",
+    "pages.config.ts": "manifest.config.ts,openapi-ts-request.config.ts",
+    "package.json": "tsconfig.json,pnpm-lock.yaml,pnpm-workspace.yaml,LICENSE,.gitattributes,.gitignore,.gitpod.yml,CNAME,.npmrc,.browserslistrc",
+    "eslint.config.mjs": ".commitlintrc.*,.prettier*,.editorconfig,.commitlint.cjs,.eslint*"
+  },
+
+  "prettier.enable": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[vue]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "never"
+  },
+
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+    "vue",
+    "html",
+    "markdown",
+    "json",
+    "jsonc",
+    "yaml",
+    "toml",
+    "xml",
+    "gql",
+    "graphql",
+    "astro",
+    "svelte",
+    "css",
+    "less",
+    "scss",
+    "pcss",
+    "postcss"
+  ],
+  "cSpell.words": [
+    "alova",
+    "Aplipay",
+    "attributify",
+    "chooseavatar",
+    "climblee",
+    "commitlint",
+    "dcloudio",
+    "iconfont",
+    "oxlint",
+    "qrcode",
+    "refresherrefresh",
+    "scrolltolower",
+    "tabbar",
+    "Toutiao",
+    "uniapp",
+    "unibest",
+    "unocss",
+    "uview",
+    "uvui",
+    "Wechat",
+    "WechatMiniprogram",
+    "Weixin"
+  ]
+}

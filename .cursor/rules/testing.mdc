@@ -1,0 +1,38 @@
+---
+description: 测试命名、放置位置与最低触发规则；实际验证命令以 .codex/playbooks/verification-gates.md 为准
+globs: "**/*.spec.{ts,tsx,vue}", "**/*.test.{ts,tsx,vue}", "**/*.e2e-spec.ts", "**/test/**/*.ts", "**/e2e/**/*.ts"
+alwaysApply: false
+---
+
+# 测试规则（兼容层）
+
+本文件只保留测试文件的命名、放置位置和最低门禁。实际验证命令与执行时机以仓库 canonical 规则为准：
+
+- `AGENTS.md`
+- `.codex/playbooks/verification-gates.md`
+
+## 命名与放置
+
+- 单元测试：优先 `*.spec.ts`
+- Backend 集成测试：`test/integration/*.integration.spec.ts`
+- Backend E2E：`test/*.e2e-spec.ts`
+- Admin-Web E2E：`e2e/*.spec.ts`
+
+默认约定：
+
+- backend 单元测试与源文件同目录
+- admin-web 测试与源文件或约定测试目录相邻
+- miniapp-client 暂无统一 test 脚本时，不强行要求新增测试框架
+
+## 最低触发规则
+
+- 新增或修改 backend Controller / Service / Repository，应补对应测试或给出风险说明
+- 新增或修改 admin-web 页面、路由、关键 API 绑定，应补对应测试建议；关键页面改动合并前建议补 E2E
+- 登录、支付、资金、租户隔离相关改动不得宣称“已完成”却没有任何验证路径
+
+## 测试写法底线
+
+- 断言具体，避免只用 `toBeTruthy`
+- 错误场景必须覆盖
+- backend 涉及规则、状态机、并发、金额计算时，优先按 `process-testing` 规则写测试
+

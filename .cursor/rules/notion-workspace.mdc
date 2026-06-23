@@ -1,0 +1,12 @@
+---
+description: 已退出代码开发主链路；Notion 工作区规则不再属于仓库开发规范正文
+alwaysApply: false
+---
+
+# 已移出主链路
+
+Notion 工作区设计规则不再属于代码开发规范主链路。
+
+- 代码开发请优先遵循 `AGENTS.md` 与 `.codex/playbooks/*`
+- 若仍需维护 Notion 工作区约束，应迁移到独立的协作工具规范中
+

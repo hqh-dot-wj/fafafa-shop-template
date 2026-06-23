@@ -1,0 +1,45 @@
+/**
+ * 地址管理 API
+ * 类型来自 @libs/common-types（由 backend openApi.json 生成）
+ */
+import type { components, CreateAddressParams, UpdateAddressParams } from '@libs/common-types';
+import { httpDelete, httpGet, httpPost, httpPut } from '@/http/http';
+
+/** 向后兼容别名：旧代码中使用的 AddressDto */
+export type AddressDto = CreateAddressParams;
+export type AddressVo = components['schemas']['AddressVo'];
+
+/** 获取地址列表 */
+export function getAddressList() {
+  return httpGet<{ list: AddressVo[] }>('/client/address/list');
+}
+
+/** 获取默认地址 */
+export function getDefaultAddress() {
+  return httpGet<AddressVo | null>('/client/address/default');
+}
+
+/** 获取地址详情 */
+export function getAddressDetail(id: string) {
+  return httpGet<AddressVo>(`/client/address/${id}`);
+}
+
+/** 创建地址 */
+export function createAddress(dto: CreateAddressParams) {
+  return httpPost<AddressVo>('/client/address', dto);
+}
+
+/** 更新地址 */
+export function updateAddress(dto: UpdateAddressParams) {
+  return httpPut<AddressVo>('/client/address', dto);
+}
+
+/** 删除地址 */
+export function deleteAddress(id: string) {
+  return httpDelete(`/client/address/${id}`);
+}
+
+/** 设为默认地址 */
+export function setDefaultAddress(id: string) {
+  return httpPut(`/client/address/${id}/default`);
+}

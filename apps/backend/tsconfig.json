@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "watchOptions": {
+    "excludeFiles": ["**/metadata.ts", "public/openApi.json"]
+  },
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "removeComments": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "noImplicitAny": true,
+    "strictNullChecks": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "src/*": ["src/*"],
+      "@src/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/metadata.ts", "public/openApi.json"]
+}

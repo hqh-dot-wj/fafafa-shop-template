@@ -1,0 +1,223 @@
+# CI：lint / typecheck / 契约与静态门禁；不跑单元测试、集成测试、E2E、Harness 冒烟。
+# 测试请在本地或单独 workflow 执行。触发范围见 paths-ignore；Deploy 见 deploy.yml。
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - 'deploy/**'
+      - 'docs/**'
+      - '.cursor/**'
+      - '.vscode/**'
+      - '.claude/**'
+      - '.codex/**'
+      - '**/*.md'
+  pull_request:
+    branches: [main, master]
+    paths-ignore:
+      - 'deploy/**'
+      - 'docs/**'
+      - '.cursor/**'
+      - '.vscode/**'
+      - '.claude/**'
+      - '.codex/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      admin: ${{ steps.filter.outputs.admin }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            admin:
+              - 'apps/admin-web/**'
+            backend:
+              - 'apps/backend/**'
+              - 'libs/**'
+
+  ci:
+    needs: changes
+    permissions:
+      contents: read
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nest_admin_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nest_admin_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nest_admin_test?schema=public
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+      REDIS_DB: 0
+      # main/master 或 workflow_dispatch：跑全量 typecheck（含 h5）
+      FULL_SUITE: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        if: needs.changes.outputs.backend == 'true' || env.FULL_SUITE == 'true'
+        run: pnpm --filter @apps/backend prisma:generate
+
+      - name: Build backend
+        if: needs.changes.outputs.backend == 'true' || env.FULL_SUITE == 'true'
+        run: pnpm build:backend
+
+      - name: Generate OpenAPI artifact
+        if: needs.changes.outputs.backend == 'true' || env.FULL_SUITE == 'true'
+        working-directory: apps/backend
+        run: OPENAPI_ONLY=true node dist/main.js
+        env:
+          REDIS_PASSWORD: ''
+          REDIS_DB: 0
+
+      - name: Verify monorepo
+        run: pnpm verify-monorepo
+
+      - name: Verify quality gates
+        run: pnpm verify:quality-gates
+
+      - name: Verify admin view types
+        run: pnpm verify:admin-view-types
+
+      - name: Verify contracts
+        if: needs.changes.outputs.backend == 'true' || env.FULL_SUITE == 'true'
+        run: pnpm contracts:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck backend
+        if: needs.changes.outputs.backend == 'true' || env.FULL_SUITE == 'true'
+        run: pnpm typecheck:backend
+
+      - name: Typecheck admin-web
+        if: needs.changes.outputs.admin == 'true' || env.FULL_SUITE == 'true'
+        run: pnpm typecheck:admin
+
+      - name: Typecheck miniapp
+        if: env.FULL_SUITE == 'true'
+        run: pnpm typecheck:h5
+
+  deploy-vps:
+    name: Deploy VPS (optional)
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      vars.DEPLOY_VPS_ENABLED == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: SSH key and known_hosts
+        run: |
+          set -e
+          mkdir -p "$GITHUB_WORKSPACE/.ci-deploy" "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$GITHUB_WORKSPACE/.ci-deploy/id_rsa"
+          chmod 600 "$GITHUB_WORKSPACE/.ci-deploy/id_rsa"
+          PORT="${DEPLOY_SSH_PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts"
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+
+      - name: Write backend deploy config
+        run: node scripts/ci/write-vps-deploy-config.mjs backend
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ github.workspace }}/.ci-deploy/id_rsa
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_BACKEND_REMOTE_PATH: ${{ secrets.DEPLOY_BACKEND_REMOTE_PATH }}
+          DEPLOY_BACKEND_BACKUP_PATH: ${{ secrets.DEPLOY_BACKEND_BACKUP_PATH }}
+          DEPLOY_PM2_APP_NAME: ${{ secrets.DEPLOY_PM2_APP_NAME }}
+          DEPLOY_HEALTH_CHECK_URL: ${{ secrets.DEPLOY_HEALTH_CHECK_URL }}
+
+      - name: Deploy backend
+        run: pnpm --filter @apps/backend deploy:prod
+
+      - name: Write admin deploy config
+        if: vars.DEPLOY_ADMIN_ENABLED == 'true'
+        run: node scripts/ci/write-vps-deploy-config.mjs admin
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ github.workspace }}/.ci-deploy/id_rsa
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_ADMIN_REMOTE_PATH: ${{ secrets.DEPLOY_ADMIN_REMOTE_PATH }}
+          DEPLOY_ADMIN_BACKUP_PATH: ${{ secrets.DEPLOY_ADMIN_BACKUP_PATH }}
+
+      - name: Deploy admin-web
+        if: vars.DEPLOY_ADMIN_ENABLED == 'true'
+        run: pnpm --filter @apps/admin-web deploy:prod

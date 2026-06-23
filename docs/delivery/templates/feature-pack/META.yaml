@@ -1,0 +1,36 @@
+# Feature Pack 元数据模板
+# 复制本文件到功能目录后，替换所有 <占位符> 内容
+
+id: FEAT-YYYY-NNN
+title: <功能名称>
+owner: '@hqh-dot-wj'
+status: draft # draft / in-progress / testing / released / cancelled
+priority: P1 # P0 / P1 / P2
+risk_level: low # low / medium / high
+
+business_domain:
+  - <业务域，如 marketing / order / finance>
+
+affected_apps:
+  - '@apps/backend'
+  - '@apps/admin-web'
+  # - "@apps/miniapp-client"
+
+affected_modules:
+  - apps/backend/src/module/<模块>/
+  - apps/admin-web/src/views/<模块>/
+
+related_docs: []
+  # - docs/domain/<相关领域文档>.md
+  # - docs/adr/ADR-NNNN-xxx.md
+
+requires_migration: false
+requires_env_change: false
+requires_release_note: true
+requires_rollback_plan: false # high risk 时设为 true
+
+# Agent 执行编排（与 Feature Pack 关联，见 docs/delivery/README.md）
+exec_plan: null
+# 示例：docs/exec-plans/active/FEAT-2026-001-marketing-refactor.md
+task_mode: new-feature # review-only | new-feature | refactor | contract-change | ...
+path_type: cross-app # backend-only | admin-web-only | cross-app | doc-only | ...

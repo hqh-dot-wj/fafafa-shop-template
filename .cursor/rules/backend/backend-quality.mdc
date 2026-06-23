@@ -1,0 +1,15 @@
+---
+description: Backend 质量（兼容层入口；分层、复杂度、注释、性能与安全规则以 AGENTS.md 为准）
+globs: apps/backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Quality
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- `apps/backend/AGENTS.md`（分层、循环依赖、事务与外部副作用、高风险模块）
+- 仓库根 `AGENTS.md` §3 高风险入口、§5 证据等级
+- `.codex/playbooks/backend-safe-change.md`、`.codex/playbooks/verification-gates.md`
+
+规则冲突时以 canonical 为准。

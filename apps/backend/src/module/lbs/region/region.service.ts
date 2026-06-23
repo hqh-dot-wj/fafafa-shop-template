@@ -1,0 +1,151 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { getErrorMessage } from 'src/common/utils/error';
+import { RedisService } from 'src/module/common/redis/redis.service';
+import { RegionRepository } from './region.repository';
+import { SystemCacheable, ClearSystemCache } from 'src/module/admin/common/decorators/system-cache.decorator';
+
+@Injectable()
+export class RegionService implements OnModuleInit {
+  private readonly logger = new Logger(RegionService.name);
+  private readonly seedLockKey = 'lbs:region:seed:lock';
+  private readonly seedLockTtlMs = 60000;
+
+  constructor(
+    private readonly repo: RegionRepository,
+    private readonly redisService: RedisService,
+  ) {}
+
+  async onModuleInit() {
+    // Check if regions exist, if not, seed them
+    const count = await this.repo.count();
+    if (count === 0) {
+      this.logger.log('No regions found. Starting seeding process...');
+      await this.seedRegions();
+    }
+  }
+
+  async seedRegions() {
+    const lockToken = await this.redisService.tryLock(this.seedLockKey, this.seedLockTtlMs);
+    if (!lockToken) {
+      this.logger.log('Region seed lock is held by another instance, skip seeding.');
+      return;
+    }
+
+    try {
+      // Double-check after acquiring lock
+      const existsCount = await this.repo.count();
+      if (existsCount > 0) {
+        this.logger.log('Region data already exists (double-check after lock), skip seeding.');
+        return;
+      }
+
+      // Standardized path: apps/backend/src/assets/json/pcas-code.json
+      const jsonPath = path.resolve(process.cwd(), 'src/assets/json/pcas-code.json');
+
+      try {
+        await fs.access(jsonPath);
+      } catch {
+        this.logger.warn(`Region JSON file not found at [${jsonPath}]. Skipping seed.`);
+        return;
+      }
+
+      const data = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
+      this.logger.log('Read JSON data, starting seeding...');
+
+      const flattenData: any[] = [];
+      const traverse = (node: any, parentId: string | null = null, level: number = 1) => {
+        flattenData.push({
+          code: node.code,
+          name: node.name,
+          parentId: parentId,
+          level: level,
+          latitude: node.latitude || node.lat || null,
+          longitude: node.longitude || node.lng || null,
+        });
+
+        if (node.children && node.children.length > 0) {
+          node.children.forEach((child: any) => traverse(child, node.code, level + 1));
+        }
+      };
+
+      data.forEach((province: any) => traverse(province));
+
+      this.logger.log(`Prepared ${flattenData.length} region records. Inserting in batches...`);
+
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < flattenData.length; i += BATCH_SIZE) {
+        const batch = flattenData.slice(i, i + BATCH_SIZE);
+        await this.repo.createMany(batch);
+      }
+
+      this.logger.log('Region seeding completed.');
+    } finally {
+      try {
+        await this.redisService.unlock(this.seedLockKey, lockToken);
+      } catch (error) {
+        this.logger.warn(`Region seed lock release failed: ${getErrorMessage(error)}`);
+      }
+    }
+  }
+
+  /**
+   * 获取所有区域树 (带缓存)
+   * 缓存 24 小时 (static data)
+   */
+  @SystemCacheable({ key: 'sys:region:tree', ttl: 86400 })
+  async getTree() {
+    // Build tree
+    const regions = await this.repo.findAllRegions();
+    return this.buildTree(regions);
+  }
+
+  /**
+   * 获取子区域列表 (带缓存)
+   */
+  @SystemCacheable({ key: (args) => `sys:region:children:${args[0] || 'root'}`, ttl: 86400 })
+  async getChildren(parentCode?: string) {
+    if (!parentCode) {
+      return this.repo.findRoots();
+    }
+    return this.repo.findChildren(parentCode);
+  }
+
+  /**
+   * 获取区域名称 (带缓存)
+   */
+  @SystemCacheable({ key: (args) => `sys:region:name:${args[0]}`, ttl: 86400 })
+  async getRegionName(code: string) {
+    const region = await this.repo.findById(code, { select: { name: true } });
+    return region?.name || '';
+  }
+
+  /**
+   * 清除区划缓存（用于数据更新后）
+   */
+  @ClearSystemCache(['sys:region:*'])
+  async clearRegionCache() {
+    this.logger.log('Region cache cleared');
+  }
+
+  private buildTree(regions: any[]) {
+    const map = new Map<string, any>();
+    const roots: any[] = [];
+
+    regions.forEach((item) => {
+      map.set(item.code, { ...item, children: [] });
+    });
+
+    regions.forEach((item) => {
+      const node = map.get(item.code);
+      if (item.parentId && map.has(item.parentId)) {
+        map.get(item.parentId).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    return roots;
+  }
+}

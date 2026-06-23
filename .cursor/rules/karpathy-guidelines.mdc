@@ -1,0 +1,13 @@
+---
+description: 已弃用；执行原则已纳入仓库根 AGENTS.md §0 硬规则与 §2 任务模式判定
+alwaysApply: false
+---
+
+# 已弃用
+
+Karpathy 风格四条行为准则（先澄清再写、简单优先、只改必要范围、目标可验证）的执行口径已纳入仓库 canonical：
+
+- 「先澄清再写 / 简单优先 / 只改必要范围」对应根 `AGENTS.md` §0 硬规则（特别是 #8 不顺手重构）+ §2 任务模式判定
+- 「目标可验证」对应根 `AGENTS.md` §4-§6 验证分层 + `.codex/playbooks/verification-gates.md`
+
+本文件保留仅为兼容旧引用。

@@ -1,0 +1,28 @@
+// Shared base enums used by multiple backend domains.
+
+enum Status {
+  NORMAL @map("0")
+  STOP   @map("1")
+}
+
+enum DelFlag {
+  NORMAL @map("0")
+  DELETE @map("1")
+}
+
+enum AuditStatus {
+  PENDING  @map("0") // 待审核
+  APPROVED @map("1") // 通过
+  REJECTED @map("2") // 驳回
+}
+
+enum Gender {
+  UNKNOWN @map("0") // 未知
+  MALE    @map("1") // 男
+  FEMALE  @map("2") // 女
+}
+
+enum MediaType {
+  IMAGE @map("1") // 图片
+  VIDEO @map("2") // 视频
+}

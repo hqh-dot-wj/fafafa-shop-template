@@ -1,0 +1,168 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production build
+dist/
+dist-ssr/
+
+# NestJS Swagger CLI 插件自动生成（dev/watch 时生成，避免 watch 循环）
+apps/backend/src/metadata.ts
+build/
+out/
+
+# Admin-Web 插件自动生成（dev/build 时生成，避免频繁 diff 与 lint 解析错误）
+apps/admin-web/src/typings/components.d.ts
+apps/admin-web/src/typings/elegant-router.d.ts
+apps/admin-web/src/router/elegant/*
+!apps/admin-web/src/router/elegant/marketing-cutover.ts
+
+# Backend OpenAPI 输出（main.ts 每次启动写入；generate-types 依赖，需先运行 backend）
+apps/backend/public/openApi.json
+apps/backend/public/.openapi-contract-max-mtime
+
+# db
+db/
+
+# Codex local artifacts
+.codex/tmp/
+.codex/runtime-logs/
+.codex-tmp/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local diagnostics and one-off repro artifacts
+/memory-analysis.json
+/repro_*.js
+/*.session.sql
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.jest-cache/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# Editor directories and files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.VSCodeCounter/
+
+# Lock files (optional, uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Deployment files (部署输出在项目外同级目录 openclaw)
+deploy.config.cjs
+deploy/ci.env
+.deploy-temp/
+*.tar.gz
+
+# Upload files (user uploaded content)
+upload/
+!upload/.gitkeep
+!apps/backend/src/module/admin/upload/
+!apps/backend/src/module/admin/upload/**
+!apps/backend/src/module/client/upload/
+!apps/backend/src/module/client/upload/**
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Prevent sub-package .git directories (monorepo uses root .git only)
+apps/*/.git/
+libs/*/.git/
+
+# VitePress（根目录 docs 站点）依赖预构建缓存，不应提交
+docs/.vitepress/cache/
+
+# Cache
+.cache/
+.temp/
+.tmp/
+*.tsbuildinfo
+.turbo/
+
+# Prisma
+# server/prisma/migrations/*
+# !server/prisma/migrations/.gitkeep
+
+# RSA keys (sensitive)
+server/keys/private.key
+server/keys/public.key
+
+# PM2
+.pm2/
+pm2.log
+ecosystem.config.cjs.local
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Misc
+*.orig
+*.rej
+grep_output.*
+**/grep_output.*
+.history/
+.worktrees/
+
+# Todo2 - AI-powered task management directories
+.cursor/rules/todo2-overview.mdc
+.cursor/rules/todo2.mdc
+.cursor/mcp.json
+.todo2/
+
+.agent/
+
+# Claude 等工具的本地会话上下文（不入库），但保留可版本化入口
+.claude/*
+!.claude/CLAUDE.md
+
+.playwright-mcp

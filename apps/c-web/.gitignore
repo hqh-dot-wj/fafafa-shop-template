@@ -1,0 +1,7 @@
+dist
+node_modules
+*.log
+.nuxt
+.output
+dist-static
+.eslintrc-auto-import.json

@@ -1,0 +1,45 @@
+{
+  "title": "Rate Limit - Backend Product Query",
+  "queries": [
+    {
+      "name": "ProductListFallbackRPS",
+      "description": "商品列表兜底缓存每秒次数",
+      "promql": "sum(rate(rate_limit_events_total{scope=\"client-product-list\",outcome=\"fallback\"}[1m]))"
+    },
+    {
+      "name": "ProductListRejectRPS",
+      "description": "商品列表限流拒绝每秒次数",
+      "promql": "sum(rate(rate_limit_events_total{scope=\"client-product-list\",outcome=\"reject\"}[1m]))"
+    },
+    {
+      "name": "GlobalRejectRPS",
+      "description": "全局限流拒绝每秒次数",
+      "promql": "sum(rate(rate_limit_events_total{source=\"express\",scope=\"global-http\",outcome=\"reject\"}[1m]))"
+    },
+    {
+      "name": "ProductListOverloadFallbackRPS",
+      "description": "商品列表并发舱壁兜底每秒次数",
+      "promql": "sum(rate(rate_limit_events_total{source=\"overload_guard\",scope=\"client-product-list\",outcome=\"fallback\"}[1m]))"
+    },
+    {
+      "name": "ProductListOverloadRejectRPS",
+      "description": "商品列表并发舱壁拒绝每秒次数",
+      "promql": "sum(rate(rate_limit_events_total{source=\"overload_guard\",scope=\"client-product-list\",outcome=\"reject\"}[1m]))"
+    },
+    {
+      "name": "FallbackShare10m",
+      "description": "商品列表限流事件中兜底占比（10分钟）",
+      "promql": "sum(increase(rate_limit_events_total{scope=\"client-product-list\",outcome=\"fallback\"}[10m])) / clamp_min(sum(increase(rate_limit_events_total{scope=\"client-product-list\",outcome=~\"fallback|reject\"}[10m])), 1)"
+    },
+    {
+      "name": "TopScopesByReject",
+      "description": "各限流作用域拒绝次数 Top5（5分钟）",
+      "promql": "topk(5, sum by (scope) (increase(rate_limit_events_total{outcome=\"reject\"}[5m])))"
+    },
+    {
+      "name": "TopSourcesByReject",
+      "description": "不同限流源拒绝次数（5分钟）",
+      "promql": "sum by (source) (increase(rate_limit_events_total{outcome=\"reject\"}[5m]))"
+    }
+  ]
+}

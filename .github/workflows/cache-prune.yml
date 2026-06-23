@@ -1,0 +1,129 @@
+# 定期清理 GitHub Actions 依赖缓存（pnpm / turbo 等），避免长期占满 10GB 配额。
+# Docker 构建缓存已迁至 GHCR（deploy.yml type=registry），不再写入 Actions cache。
+
+name: Prune Actions caches
+
+on:
+  schedule:
+    # 每周日 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      delete_all:
+        description: 勾选后删除本仓库全部 Actions 缓存（一键清空）
+        type: boolean
+        required: false
+        default: false
+      max_age_days:
+        description: 未勾选 delete_all 时：删除超过 N 天未访问的缓存（0=仅按数量）
+        required: false
+        default: '14'
+      keep_per_key:
+        description: 未勾选 delete_all 时：每个 cache key 至少保留条数
+        required: false
+        default: '2'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const deleteAll = ${{ inputs.delete_all == true }};
+            const maxAgeDays = Number('${{ inputs.max_age_days || 14 }}') || 14;
+            const keepPerKey = Math.max(1, Number('${{ inputs.keep_per_key || 2 }}') || 2);
+            const cutoff =
+              maxAgeDays > 0
+                ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000
+                : null;
+
+            /** @type {{ id: number; key: string; last_accessed_at: string; size_in_bytes: number }[]} */
+            let all = [];
+            let page = 1;
+            const perPage = 100;
+
+            while (true) {
+              const { data } = await github.rest.actions.getActionsCacheList({
+                owner,
+                repo,
+                per_page: perPage,
+                page,
+              });
+              all = all.concat(data.actions_caches ?? []);
+              if ((data.actions_caches ?? []).length < perPage) break;
+              page += 1;
+            }
+
+            if (all.length === 0) {
+              core.info('无 Actions 缓存条目');
+              return;
+            }
+
+            all.sort(
+              (a, b) =>
+                new Date(b.last_accessed_at).getTime() -
+                new Date(a.last_accessed_at).getTime(),
+            );
+
+            const byKey = new Map();
+            for (const c of all) {
+              if (!byKey.has(c.key)) byKey.set(c.key, []);
+              byKey.get(c.key).push(c);
+            }
+
+            const toDelete = deleteAll
+              ? [...all]
+              : (() => {
+                  const list = [];
+                  for (const [, entries] of byKey) {
+                    entries.sort(
+                      (a, b) =>
+                        new Date(b.last_accessed_at).getTime() -
+                        new Date(a.last_accessed_at).getTime(),
+                    );
+                    entries.forEach((entry, idx) => {
+                      const tooOld =
+                        cutoff !== null &&
+                        new Date(entry.last_accessed_at).getTime() < cutoff;
+                      const overKeep = idx >= keepPerKey;
+                      if (tooOld || overKeep) list.push(entry);
+                    });
+                  }
+                  return list;
+                })();
+
+            core.info(
+              deleteAll
+                ? `delete_all=true：共 ${all.length} 条，将全部删除`
+                : `共 ${all.length} 条缓存，计划删除 ${toDelete.length} 条（max_age_days=${maxAgeDays}, keep_per_key=${keepPerKey}）`,
+            );
+
+            let deleted = 0;
+            let freed = 0;
+            for (const entry of toDelete) {
+              try {
+                await github.rest.actions.deleteActionsCacheById({
+                  owner,
+                  repo,
+                  cache_id: entry.id,
+                });
+                deleted += 1;
+                freed += entry.size_in_bytes ?? 0;
+              } catch (e) {
+                core.warning(`删除 cache id=${entry.id} key=${entry.key} 失败: ${e}`);
+              }
+            }
+
+            core.summary.addHeading('Actions cache 清理结果');
+            core.summary.addRaw(
+              `删除 ${deleted} 条，释放约 ${(freed / 1024 / 1024).toFixed(1)} MiB`,
+            );
+            await core.summary.write();

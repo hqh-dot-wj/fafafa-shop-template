@@ -1,0 +1,35 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "strict": false,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/layouts/*": ["./src/test/type-stubs/vue-component.ts"],
+      "@/locales": ["./src/test/type-stubs/locales.ts"],
+      "@/locales/*": ["./src/test/type-stubs/locales.ts"],
+      "@/service/request": ["./src/test/type-stubs/request.ts"],
+      "@/views/marketing/_orchestration/*": ["./src/views/marketing/_orchestration/*"],
+      "@/views/*": ["./src/test/type-stubs/vue-component.ts"],
+      "~/*": ["./*"]
+    },
+    "types": ["vite/client", "node", "vitest/globals", "unplugin-icons/types/vue", "naive-ui/volar"]
+  },
+  "include": [
+    "src/typings/**/*.d.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.spec.vue",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.test.vue",
+    "src/test/**/*.ts",
+    "e2e/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/typings/components.d.ts"],
+  "vueCompilerOptions": {
+    "strictTemplates": false
+  }
+}

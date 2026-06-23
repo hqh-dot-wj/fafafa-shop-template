@@ -1,0 +1,13 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+// Prisma CLI 与 Nest 运行时均使用环境变量 DATABASE_URL（与 src/config 注入的 db.databaseUrl 同源）。
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// Prisma multi-file schema: domain models and enums live in ./models/*.prisma.

@@ -1,0 +1,126 @@
+import { Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import { DelFlagEnum, StatusEnum } from 'src/common/enum/index';
+import { Prisma, SysDept } from '@prisma/client';
+import { SoftDeleteRepository } from '../../../../common/repository/base.repository';
+import { PrismaService } from '../../../../prisma/prisma.service';
+
+/**
+ * 部门仓储层
+ */
+@Injectable()
+export class DeptRepository extends SoftDeleteRepository<
+  SysDept,
+  Prisma.SysDeptCreateInput,
+  Prisma.SysDeptUpdateInput,
+  Prisma.SysDeptDelegate
+> {
+  constructor(prisma: PrismaService, cls: ClsService) {
+    super(prisma, cls, 'sysDept', 'deptId');
+  }
+
+  /**
+   * 根据部门名称查询
+   */
+  async findByDeptName(deptName: string): Promise<SysDept | null> {
+    return this.findOne({ deptName, delFlag: DelFlagEnum.NORMAL });
+  }
+
+  /**
+   * 检查部门名称是否存在
+   */
+  async existsByDeptName(deptName: string, parentId: number, excludeDeptId?: number): Promise<boolean> {
+    const where: Prisma.SysDeptWhereInput = {
+      deptName,
+      parentId,
+      delFlag: DelFlagEnum.NORMAL,
+    };
+
+    if (excludeDeptId) {
+      where.deptId = { not: excludeDeptId };
+    }
+
+    return this.exists(where);
+  }
+
+  /**
+   * 查询所有部门（树形结构用）
+   */
+  async findAllDepts(status?: string): Promise<SysDept[]> {
+    const where: Prisma.SysDeptWhereInput = {
+      delFlag: DelFlagEnum.NORMAL,
+    };
+
+    if (status) {
+      where.status =
+        status === '0'
+          ? (StatusEnum.NORMAL as Prisma.SysDeptWhereInput['status'])
+          : status === '1'
+            ? (StatusEnum.STOP as Prisma.SysDeptWhereInput['status'])
+            : (status as Prisma.SysDeptWhereInput['status']);
+    }
+
+    return this.delegate.findMany({
+      where: this.scopeReadWhere(where as object) as Prisma.SysDeptWhereInput,
+      orderBy: [{ parentId: 'asc' }, { orderNum: 'asc' }],
+    });
+  }
+
+  /**
+   * 查询子部门数量
+   */
+  async countChildren(parentId: number): Promise<number> {
+    return this.delegate.count({
+      where: this.scopeReadWhere({ parentId, delFlag: DelFlagEnum.NORMAL }) as Prisma.SysDeptWhereInput,
+    });
+  }
+
+  /**
+   * 查询部门下的用户数量
+   */
+  async countUsers(deptId: number): Promise<number> {
+    return this.prisma.sysUser.count({
+      where: this.scopeReadWhere({ deptId, delFlag: DelFlagEnum.NORMAL }) as Prisma.SysUserWhereInput,
+    });
+  }
+
+  /**
+   * 查询角色关联的部门ID列表
+   */
+  async findRoleDeptIds(roleId: number): Promise<number[]> {
+    const roleDepts = await this.prisma.sysRoleDept.findMany({
+      where: this.scopeReadWhere({ roleId }) as Prisma.SysRoleDeptWhereInput,
+      select: { deptId: true },
+    });
+
+    return roleDepts.map((rd) => rd.deptId);
+  }
+
+  /**
+   * 查询用户数据权限范围内的部门列表
+   */
+  async findUserDataScope(userId: number, deptIds: number[]): Promise<SysDept[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({
+        deptId: { in: deptIds },
+        delFlag: DelFlagEnum.NORMAL,
+      }) as Prisma.SysDeptWhereInput,
+      orderBy: [{ parentId: 'asc' }, { orderNum: 'asc' }],
+    });
+  }
+
+  /**
+   * 批量删除部门（软删除）
+   */
+  async softDeleteBatch(deptIds: number[]): Promise<number> {
+    const result = await this.delegate.updateMany({
+      where: {
+        deptId: { in: deptIds },
+        delFlag: DelFlagEnum.NORMAL,
+      },
+      data: { delFlag: DelFlagEnum.DELETE },
+    });
+
+    return result.count;
+  }
+}

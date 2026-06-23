@@ -1,0 +1,428 @@
+// Member, social account, address, and worker schema.
+
+// ==================== C端/SaaS 业务表 (Refactored) ====================
+enum MemberStatus {
+  NORMAL   @map("1") // 正常
+  DISABLED @map("2") // 禁用
+}
+
+enum SocialPlatform {
+  MP_MALL
+  MP_WORK
+  APP_MAIN
+}
+
+enum WorkerStatus {
+  WORKING  @map("1") // 接单中 (营业)
+  RESTING  @map("2") // 休息中 (打烊)
+  DISABLED @map("3") // 已停用 (暂停)
+  RESIGNED @map("4") // 离职中 (离职)
+}
+
+enum WorkerSource {
+  BACKEND
+  APPLICATION
+}
+
+enum WorkerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WorkerApplicationSource {
+  MINIAPP
+  BACKEND
+}
+
+enum WorkerLevel {
+  PRIMARY @map("1") // 初级
+  MIDDLE  @map("2") // 中级
+  SENIOR  @map("3") // 高级
+  GOLD    @map("4") // 金牌
+}
+
+enum SkillLevel {
+  GENERAL @map("1") // 一般
+  MASTER  @map("2") // 精通
+}
+
+enum WageType {
+  HOURLY     @map("1") // 时薪制 (如: 保洁 80/小时)
+  PERCENTAGE @map("2") // 分成制 (如: 维修 平台抽20%)
+  FIXED      @map("3") // 一口价 (如: 搬家 200/次)
+}
+
+/// C端会员表 (一切业务的源头)
+model UmsMember {
+  memberId String @id @default(uuid()) @map("member_id")
+  tenantId String @default("000000") @map("tenant_id") // 归属租户
+
+  // --- 基础信息 ---
+  nickname String? @db.VarChar(64)
+  avatar   String? @db.VarChar(500)
+  mobile   String? @unique @db.VarChar(20)
+  password String? @db.VarChar(200)
+
+  // --- 状态与等级 ---
+  status  MemberStatus @default(NORMAL)
+  levelId Int          @default(0) @map("level_id") // 0=C普通, 1=C1团长, 2=C2股东
+
+  // --- 钱包资产 (分销核心) ---
+  balance       Decimal @default(0.00) @db.Decimal(10, 2) // 可提现余额
+  frozenBalance Decimal @default(0.00) @db.Decimal(10, 2) // 冻结余额
+  points        Int     @default(0) // 积分
+
+  // --- 三级分销关系链 ---
+  parentId         String? @map("parent_id") // 直接上级 (C1或C2)
+  indirectParentId String? @map("indirect_parent_id") // 间接上级 (C2)
+  referralCode     String? @unique @map("referral_code") // 推荐码 (仅C2, 格式: T001-XXXX)
+
+  // --- 升级信息 ---
+  upgradedAt     DateTime? @map("upgraded_at") // 升级时间
+  upgradeOrderId String?   @map("upgrade_order_id") // 通过购买升级时的订单ID
+
+  // --- 时间 ---
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // --- 分销关联 ---
+  parent         UmsMember?  @relation("ParentChild", fields: [parentId], references: [memberId])
+  directChildren UmsMember[] @relation("ParentChild") // 我的直接下级
+
+  indirectParent   UmsMember?  @relation("IndirectParentChild", fields: [indirectParentId], references: [memberId])
+  indirectChildren UmsMember[] @relation("IndirectParentChild") // 我的间接下级
+
+  socials          SysSocialUser[]
+  workers          SrvWorker[] // 1:N 技师关联 (多租户兼职)
+  sysRegionAgents  SysRegionAgent[]
+  umsAddresses     UmsAddress[]
+  aiContentRecords AiContentRecord[]
+
+  // --- 财务关联 ---
+  wallet      FinWallet?
+  commissions FinCommission[]
+  withdrawals FinWithdrawal[]
+
+  @@index([mobile])
+  @@index([parentId])
+  @@index([indirectParentId])
+  @@index([tenantId, levelId])
+  @@map("ums_member")
+}
+
+/// 会员升级申请表
+model UmsUpgradeApply {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+  memberId String @map("member_id")
+
+  fromLevel Int @map("from_level") // 原等级 (0/1)
+  toLevel   Int @map("to_level") // 目标等级 (1/2)
+
+  applyType    String  @map("apply_type") // PRODUCT_PURCHASE / REFERRAL_CODE
+  referralCode String? @map("referral_code") // 扫码申请时的推荐码
+  orderId      String? @map("order_id") // 购买升级商品时的订单ID
+  referrerId   String? @map("referrer_id") // 推荐人ID (从推荐码解析)
+
+  status       String    @default("PENDING") // PENDING / APPROVED / REJECTED
+  reviewBy     String?   @map("review_by")
+  reviewTime   DateTime? @map("review_time")
+  reviewRemark String?   @map("review_remark") @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, memberId])
+  @@index([status])
+  @@map("ums_upgrade_apply")
+}
+
+/// C2推荐码表 (带租户前缀: T001-XXXX)
+model UmsReferralCode {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+  memberId String @map("member_id") // 归属人 (仅C2可有)
+
+  code      String  @unique // 格式: T001-XXXX
+  qrCodeUrl String? @map("qr_code_url") @db.VarChar(500) // 小程序码URL
+
+  usageCount Int     @default(0) @map("usage_count") // 使用次数
+  isActive   Boolean @default(true) @map("is_active")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@unique([tenantId, memberId])
+  @@index([code])
+  @@map("ums_referral_code")
+}
+
+/// 社交账号绑定表
+model SysSocialUser {
+  socialId String @id @default(uuid()) @map("social_id")
+  memberId String @map("member_id")
+
+  platform SocialPlatform // 平台标识
+
+  openid  String  @db.VarChar(64)
+  unionid String? @db.VarChar(64) // 跨端识别关键
+
+  nickname   String?
+  avatar     String?
+  sessionKey String? @map("session_key")
+
+  member UmsMember @relation(fields: [memberId], references: [memberId])
+
+  @@unique([platform, openid])
+  @@index([memberId])
+  @@index([unionid])
+  @@map("sys_social_user")
+}
+
+/// 用户收货地址表
+model UmsAddress {
+  id       String @id @default(uuid())
+  memberId String @map("member_id")
+
+  // 收货人信息
+  name  String @db.VarChar(50) // 收货人姓名
+  phone String @db.VarChar(20) // 联系电话
+
+  // 地址信息 (省市区 + 详细地址)
+  province String @db.VarChar(50) // 省
+  city     String @db.VarChar(50) // 市
+  district String @db.VarChar(50) // 区/县
+  detail   String @db.VarChar(500) // 详细地址
+
+  // LBS 定位信息 (可选，用于服务范围校验)
+  latitude  Float? // 纬度
+  longitude Float? // 经度
+
+  // 标识
+  isDefault Boolean @default(false) @map("is_default") // 是否默认地址
+  tag       String? @db.VarChar(20) // 标签: 家、公司、学校
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  member UmsMember @relation(fields: [memberId], references: [memberId])
+
+  @@index([memberId])
+  @@map("ums_address")
+}
+
+// ==========================================
+// 📌 劳动者/技师核心 (Service Worker)
+// ==========================================
+
+/// 劳动者主表 (高频访问核心表)
+model SrvWorker {
+  workerId Int    @id @default(autoincrement()) @map("worker_id")
+  memberId String @map("member_id") // 关联C端账号
+  tenantId String @map("tenant_id") // 归属分公司
+
+  // --- 核心展示 ---
+  name     String  @db.VarChar(50)
+  nickName String? @map("nick_name")
+  avatar   String? @db.VarChar(500)
+  phone    String  @db.VarChar(20)
+
+  // --- 业务状态 ---
+  status      WorkerStatus @default(WORKING)
+  auditStatus AuditStatus  @default(PENDING) @map("audit_status")
+  isOnline    Boolean      @default(true) @map("is_online") // 接单开关
+  source      WorkerSource @default(BACKEND)
+
+  // --- LBS 派单核心 (新增) ---
+  currentLat    Float? @map("current_lat") // 实时纬度 (Redis也会存，这里存最后一次)
+  currentLng    Float? @map("current_lng") // 实时经度
+  serviceRadius Int    @default(5000) @map("service_radius") // 服务半径(米)
+  serviceArea   Json?  @map("service_area")
+  address       Json?
+
+  // --- 薪资配置 (新增 - 用于算工资) ---
+  wageType WageType @default(HOURLY) @map("wage_type")
+  baseWage Decimal  @default(0.00) @map("base_wage") @db.Decimal(10, 2) // 时薪或分成比例
+
+  // --- 权重数据 ---
+  rating          Decimal     @default(5.0) @db.Decimal(2, 1)
+  orderCount      Int         @default(0) @map("order_count")
+  seniority       WorkerLevel @default(PRIMARY)
+  tags            Json? // ["擅长收纳", "自带工具"]
+  completionScore Int         @default(0) @map("completion_score")
+  remark          String?     @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // --- 关联 ---
+  member UmsMember @relation(fields: [memberId], references: [memberId])
+
+  profile   SrvWorkerProfile?
+  certs     SrvWorkerCert[]
+  skills    SrvWorkerSkill[]
+  works     SrvWorkerWork[]
+  schedules SrvWorkerSchedule[] // 排班记录
+
+  @@unique([memberId, tenantId])
+  @@index([tenantId, status]) // 租户筛选+状态筛选
+  @@index([phone])
+  @@map("srv_worker")
+}
+
+/// 劳动者详细档案 (隐私/低频信息)
+model SrvWorkerProfile {
+  profileId Int @id @default(autoincrement()) @map("profile_id")
+  workerId  Int @unique @map("worker_id")
+
+  // --- 隐私信息 (需加密) ---
+  idCard      String? @map("id_card") @db.VarChar(20)
+  idCardFront String? @map("id_card_front") @db.VarChar(500)
+  idCardBack  String? @map("id_card_back") @db.VarChar(500)
+
+  // --- 基础画像 ---
+  gender          Gender  @default(UNKNOWN)
+  age             Int?
+  nativePlace     String? @map("native_place")
+  education       String? @db.VarChar(20)
+  startWorkYear   Int?    @map("start_work_year")
+  experienceYears Int?    @map("experience_years")
+
+  // --- 身体状况 ---
+  height     Int?
+  weight     Int?
+  healthInfo String? @map("health_info")
+
+  // --- 介绍 ---
+  intro      String? @db.Text
+  voiceIntro String? @map("voice_intro")
+  videoIntro String? @map("video_intro")
+
+  // --- 结算账户 ---
+  bankName String? @map("bank_name")
+  bankNo   String? @map("bank_no")
+
+  worker SrvWorker @relation(fields: [workerId], references: [workerId])
+
+  @@map("srv_worker_profile")
+}
+
+/// 劳动者证书
+model SrvWorkerCert {
+  certId   Int @id @default(autoincrement()) @map("cert_id")
+  workerId Int @map("worker_id")
+
+  name   String  @db.VarChar(50)
+  certNo String? @map("cert_no")
+  images Json?
+
+  issueDate  DateTime? @map("issue_date")
+  expireDate DateTime? @map("expire_date") // 过期需提醒
+
+  isVerified Boolean @default(false) @map("is_verified")
+
+  worker SrvWorker @relation(fields: [workerId], references: [workerId])
+
+  @@index([workerId])
+  @@map("srv_worker_cert")
+}
+
+/// 劳动者技能 (关联商品分类)
+model SrvWorkerSkill {
+  id       Int @id @default(autoincrement())
+  workerId Int @map("worker_id")
+
+  categoryId Int    @map("cat_id") // 核心：关联商品分类ID，决定能接什么单
+  skillName  String @map("skill_name")
+
+  level SkillLevel @default(GENERAL)
+
+  worker SrvWorker @relation(fields: [workerId], references: [workerId])
+
+  @@unique([workerId, categoryId])
+  @@map("srv_worker_skill")
+}
+
+/// 劳动者作品案例
+model SrvWorkerWork {
+  workId   Int @id @default(autoincrement()) @map("work_id")
+  workerId Int @map("worker_id")
+
+  title       String  @db.VarChar(100)
+  description String? @db.Text
+
+  mediaType MediaType @default(IMAGE)
+  mediaUrls Json
+
+  workDate DateTime? @map("work_date")
+
+  worker SrvWorker @relation(fields: [workerId], references: [workerId])
+
+  @@index([workerId])
+  @@map("srv_worker_work")
+}
+
+// ==========================================
+// 📌 [新增] 劳动者排班/日程表
+// ==========================================
+// 用于解决: "这个技师明天下午2点有没有空?"
+model SrvWorkerSchedule {
+  id       BigInt @id @default(autoincrement()) // 数据量大，用BigInt
+  workerId Int    @map("worker_id")
+
+  // 日期 (YYYY-MM-DD)
+  date DateTime @db.Date
+
+  // 时间段 (0-23 或者 0-47 半小时制)
+  // 简单做法: 存JSON ["09:00-10:00", "14:00-16:00"] 表示被占用的时间
+  // 高级做法: BitMap 或 48个 0/1 字段
+  busySlots Json @map("busy_slots")
+
+  // 当天状态
+  status String @default("OPEN") // OPEN:可接单, FULL:约满, OFF:休息
+
+  worker SrvWorker @relation(fields: [workerId], references: [workerId])
+
+  @@unique([workerId, date]) // 一个技师一天只有一条记录
+  @@map("srv_worker_schedule")
+}
+
+/// 工作者入驻申请表
+model SrvWorkerApplication {
+  applicationId Int     @id @default(autoincrement()) @map("application_id")
+  tenantId      String  @map("tenant_id") @db.VarChar(20)
+  memberId      String? @map("member_id")
+  workerId      Int?    @map("worker_id")
+
+  name     String  @db.VarChar(50)
+  nickName String? @map("nick_name")
+  phone    String  @db.VarChar(20)
+  avatar   String? @db.VarChar(500)
+  gender   Gender  @default(UNKNOWN)
+  address  Json?
+
+  serviceCategoryIds Json?        @map("service_category_ids")
+  skillTags          Json?        @map("skill_tags")
+  serviceArea        Json?        @map("service_area")
+  status             WorkerStatus @default(RESTING)
+  isOnline           Boolean      @default(false) @map("is_online")
+  serviceRadius      Int?         @map("service_radius")
+
+  experienceYears Int?    @map("experience_years")
+  intro           String? @db.Text
+  certificates    Json?
+  remark          String? @db.VarChar(500)
+
+  applicationSource WorkerApplicationSource @default(MINIAPP) @map("application_source")
+  applicationStatus WorkerApplicationStatus @default(PENDING) @map("application_status")
+  reviewBy          String?                 @map("review_by") @db.VarChar(64)
+  reviewTime        DateTime?               @map("review_time")
+  reviewRemark      String?                 @map("review_remark") @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@index([tenantId, applicationStatus, createTime])
+  @@index([tenantId, phone])
+  @@index([workerId])
+  @@map("srv_worker_application")
+}

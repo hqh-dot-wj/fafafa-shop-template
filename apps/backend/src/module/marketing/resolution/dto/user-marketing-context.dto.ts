@@ -1,0 +1,22 @@
+﻿export type UserMarketingContext = {
+  tenantId: string;
+  memberId?: string;
+  channel: 'MINIAPP' | 'H5' | 'ADMIN_PREVIEW';
+  now: Date;
+  isNewcomer: boolean;
+  memberLevel?: string;
+  crowdTags?: string[];
+  regionCode?: string;
+  shareUserId?: string;
+  entrySceneCode?: string;
+  entryModuleCode?: string;
+  cardTemplateCode?: string;
+  resolverPolicyCode?: string;
+  resolverReleaseNo?: number;
+  shareChannel?: string;
+  clientVersion?: string;
+  platform?: string;
+  appBuild?: string;
+  deviceHashDigest?: string;
+  traceId?: string;
+};

@@ -1,0 +1,199 @@
+groups:
+  - name: nest-admin-observability-recording
+    interval: 30s
+    rules:
+      - record: nest_admin:http_requests:rate1m
+        expr: sum(rate(http_requests_total{path!~"^/api/(metrics|health).*"}[1m]))
+
+      - record: nest_admin:http_error_ratio:rate5m
+        expr: |
+          sum(rate(http_requests_total{status=~"5..",path!~"^/api/(metrics|health).*"}[5m]))
+          /
+          clamp_min(sum(rate(http_requests_total{path!~"^/api/(metrics|health).*"}[5m])), 0.001)
+
+      - record: nest_admin:http_error_ratio:rate1h
+        expr: |
+          sum(rate(http_requests_total{status=~"5..",path!~"^/api/(metrics|health).*"}[1h]))
+          /
+          clamp_min(sum(rate(http_requests_total{path!~"^/api/(metrics|health).*"}[1h])), 0.001)
+
+      - record: nest_admin:http_latency_p95:5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{path!~"^/api/(metrics|health).*"}[5m])
+            )
+          )
+
+      - record: nest_admin:http_latency_p99:5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{path!~"^/api/(metrics|health).*"}[5m])
+            )
+          )
+
+      - record: nest_admin:http_apdex:5m
+        expr: |
+          (
+            sum(rate(http_request_duration_seconds_bucket{le="0.5",path!~"^/api/(metrics|health).*"}[5m]))
+            +
+            sum(rate(http_request_duration_seconds_bucket{le="2",path!~"^/api/(metrics|health).*"}[5m]))
+          )
+          /
+          2
+          /
+          clamp_min(sum(rate(http_request_duration_seconds_count{path!~"^/api/(metrics|health).*"}[5m])), 0.001)
+
+      - record: nest_admin:http_latency_bad_ratio:rate5m
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{le="0.5",path!~"^/api/(metrics|health).*"}[5m]))
+            /
+            clamp_min(sum(rate(http_request_duration_seconds_count{path!~"^/api/(metrics|health).*"}[5m])), 0.001)
+          )
+
+      - record: nest_admin:http_latency_bad_ratio:rate1h
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{le="0.5",path!~"^/api/(metrics|health).*"}[1h]))
+            /
+            clamp_min(sum(rate(http_request_duration_seconds_count{path!~"^/api/(metrics|health).*"}[1h])), 0.001)
+          )
+
+      - record: nest_admin:slo_error_budget_burn:5m
+        expr: nest_admin:http_error_ratio:rate5m / 0.001
+
+      - record: nest_admin:slo_error_budget_burn:1h
+        expr: nest_admin:http_error_ratio:rate1h / 0.001
+
+      - record: nest_admin:process_cpu_usage:ratio5m
+        expr: |
+          sum(rate(nest_admin_process_cpu_user_seconds_total[5m]))
+          +
+          sum(rate(nest_admin_process_cpu_system_seconds_total[5m]))
+
+  - name: nest-admin-observability-alerts
+    interval: 30s
+    rules:
+      - alert: BackendInstanceDown
+        expr: up{job="nest-admin-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: backend
+          category: availability
+        annotations:
+          summary: 'Backend 实例不可达'
+          description: 'Prometheus 连续 1 分钟无法抓取 backend /api/metrics。'
+
+      - alert: HttpErrorBudgetFastBurn
+        expr: |
+          nest_admin:http_error_ratio:rate5m > (14.4 * 0.001)
+          and
+          nest_admin:http_error_ratio:rate1h > (14.4 * 0.001)
+        for: 3m
+        labels:
+          severity: critical
+          service: backend
+          category: slo
+        annotations:
+          summary: '错误预算快速燃烧'
+          description: '5m 与 1h 双窗口 burn rate 同时超阈值，用户失败率正在快速侵蚀 SLO。'
+
+      - alert: HttpErrorBudgetSlowBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5..",path!~"^/api/(metrics|health).*"}[30m]))
+            /
+            clamp_min(sum(rate(http_requests_total{path!~"^/api/(metrics|health).*"}[30m])), 0.001)
+          ) > (6 * 0.001)
+          and
+          (
+            sum(rate(http_requests_total{status=~"5..",path!~"^/api/(metrics|health).*"}[6h]))
+            /
+            clamp_min(sum(rate(http_requests_total{path!~"^/api/(metrics|health).*"}[6h])), 0.001)
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+          service: backend
+          category: slo
+        annotations:
+          summary: '错误预算慢速燃烧'
+          description: '30m/6h 双窗口持续超阈值，当前还未雪崩，但可用性在持续恶化。'
+
+      - alert: HttpLatencyBudgetFastBurn
+        expr: |
+          nest_admin:http_latency_bad_ratio:rate5m > (14.4 * 0.05)
+          and
+          nest_admin:http_latency_bad_ratio:rate1h > (14.4 * 0.05)
+        for: 5m
+        labels:
+          severity: critical
+          service: backend
+          category: latency
+        annotations:
+          summary: '延时预算快速燃烧'
+          description: '大量请求超过 500ms，5m/1h 双窗口均超预算，体验正在快速恶化。'
+
+      - alert: HttpApdexDrop
+        expr: nest_admin:http_apdex:5m < 0.82
+        for: 10m
+        labels:
+          severity: warning
+          service: backend
+          category: ux
+        annotations:
+          summary: 'Apdex 持续下降'
+          description: '近 10 分钟 Apdex 持续低于 0.82，用户体感已明显劣化。'
+
+      - alert: RuntimeCpuAndEventLoopSaturation
+        expr: |
+          nest_admin:process_cpu_usage:ratio5m > 0.85
+          and
+          max_over_time(nest_admin_nodejs_eventloop_lag_p99_seconds[5m]) > 0.08
+        for: 10m
+        labels:
+          severity: warning
+          service: backend
+          category: saturation
+        annotations:
+          summary: 'CPU 与 Event Loop 同步饱和'
+          description: 'CPU 持续高位且 Event Loop P99 滞后超过 80ms，应用层已进入高压区。'
+
+      - alert: EventLoopLagP99High
+        expr: max_over_time(nest_admin_nodejs_eventloop_lag_p99_seconds[10m]) > 0.12
+        for: 5m
+        labels:
+          severity: critical
+          service: backend
+          category: runtime
+        annotations:
+          summary: 'Event Loop P99 过高'
+          description: 'Event Loop P99 持续高于 120ms，通常会引发接口尾延时放大和超时。'
+
+      - alert: ProcessMemoryLeakTrend
+        expr: |
+          predict_linear(nest_admin_process_resident_memory_bytes[1h], 4 * 3600) > 1800000000
+          and
+          deriv(nest_admin_process_resident_memory_bytes[30m]) > 2048
+        for: 15m
+        labels:
+          severity: warning
+          service: backend
+          category: memory
+        annotations:
+          summary: '内存泄漏趋势告警'
+          description: '未来 4 小时 RSS 预测超过 1.8GB 且仍持续爬升，疑似存在泄漏或对象滞留。'
+
+      - alert: CoreMetricsMissing
+        expr: absent(http_requests_total) or absent(http_request_duration_seconds_bucket) or absent(nest_admin_nodejs_eventloop_lag_p99_seconds)
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+          category: observability
+        annotations:
+          summary: '核心可观测指标缺失'
+          description: '关键指标连续 5 分钟缺失，可能是采集中断或应用指标注册异常。'

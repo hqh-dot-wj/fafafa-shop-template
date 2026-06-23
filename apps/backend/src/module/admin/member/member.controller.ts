@@ -1,0 +1,199 @@
+import { Body, Controller, Get, Post, Put, Query, Res } from '@nestjs/common';
+import { BizOperationLogService } from 'src/module/common/operation-log/biz-operation-log.service';
+import { ListMemberBizOperationLogDto } from 'src/module/common/operation-log/dto/list-biz-operation-log.dto';
+import { BizOperationLogVo } from 'src/module/common/operation-log/vo/biz-operation-log.vo';
+import { LogOperation } from 'src/module/common/operation-log/log-operation.decorator';
+import { BizOperationActions, BizOperationTargetTypes } from 'src/module/common/operation-log/biz-operation-log.constants';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import { MemberService } from './member.service';
+import {
+  ListMemberDto,
+  UpdateMemberStatusDto,
+  AdminUpdateMemberLevelDto,
+  UpdateReferrerDto,
+  UpdateMemberTenantDto,
+  PointHistoryQueryDto,
+  AdjustMemberPointsDto,
+} from './dto';
+import { RequirePermission } from 'src/module/admin/common/decorators/require-permission.decorator';
+import { Operlog } from 'src/module/admin/common/decorators/operlog.decorator';
+import { BusinessType } from 'src/common/constant/business.constant';
+import { Api } from 'src/common/decorators/api.decorator';
+import { PointHistoryVo } from './vo/member.vo';
+
+/**
+ * 会员管理控制器 (Member Controller)
+ * 处理会员列表查询及等级、状态、归属关系的调整请求
+ */
+@ApiTags('会员管理')
+@Controller('admin/member')
+export class MemberController {
+  constructor(
+    private readonly memberService: MemberService,
+    private readonly bizOperationLogService: BizOperationLogService,
+  ) {}
+
+  /**
+   * 查询会员列表
+   */
+  @ApiOperation({ summary: '查询会员列表' })
+  @RequirePermission('admin:member:list')
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get('list')
+  async list(@Query() query: ListMemberDto) {
+    return this.memberService.list(query);
+  }
+
+  /**
+   * 查询会员详情
+   */
+  @ApiOperation({ summary: '查询会员详情' })
+  @RequirePermission('admin:member:list')
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get('detail')
+  async detail(@Query('memberId') memberId: string) {
+    return this.memberService.detail(memberId);
+  }
+
+  /**
+   * 会员业务操作日志（等级调整、积分调整等）
+   */
+  @Api({ summary: '会员业务操作日志', type: BizOperationLogVo, isArray: true, isPager: true })
+  @RequirePermission('admin:member:list')
+  @Get('operation-logs')
+  async listOperationLogs(@Query() query: ListMemberBizOperationLogDto) {
+    return this.bizOperationLogService.listForMember(query);
+  }
+
+  /**
+   * 更新会员推荐人 (调整 C1/C2 归属)
+   */
+  @ApiOperation({ summary: '更新推荐人 (C1/C2)' })
+  @RequirePermission('admin:member:referrer')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Put('referrer')
+  async updateReferrer(@Body() dto: UpdateReferrerDto) {
+    return this.memberService.updateParent(dto);
+  }
+
+  /**
+   * 变更会员所属租户 (归属门店)
+   */
+  @ApiOperation({ summary: '变更会员归属租户' })
+  @RequirePermission('admin:member:tenant')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Put('tenant')
+  async updateTenant(@Body() dto: UpdateMemberTenantDto) {
+    return this.memberService.updateTenant(dto);
+  }
+
+  /**
+   * 更新会员状态 (启用/禁用)
+   */
+  @ApiOperation({ summary: '更新会员状态' })
+  @RequirePermission('admin:member:status')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Put('status')
+  async updateStatus(@Body() dto: UpdateMemberStatusDto) {
+    return this.memberService.updateStatus(dto);
+  }
+
+  /**
+   * 手动调整会员等级 (普通/C1/C2)
+   */
+  @ApiOperation({ summary: '手动调整会员等级' })
+  @RequirePermission('admin:member:level')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Put('level')
+  @LogOperation({
+    action: BizOperationActions.MEMBER_LEVEL_UPDATE,
+    targetType: BizOperationTargetTypes.MEMBER,
+    targetIdBodyKey: 'memberId',
+    detailBodyKeys: ['levelId'],
+  })
+  async updateLevel(@Body() dto: AdminUpdateMemberLevelDto) {
+    return this.memberService.updateLevel(dto);
+  }
+
+  /**
+   * 查询会员积分变动记录（分页）
+   */
+  @Api({ summary: '查询会员积分变动记录', type: PointHistoryVo, isArray: true, isPager: true })
+  @RequirePermission('admin:member:list')
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get('point/history')
+  async getPointHistory(@Query() query: PointHistoryQueryDto) {
+    return this.memberService.getPointHistory(query);
+  }
+
+  /**
+   * 管理员调整会员积分（增加或扣减）
+   */
+  @Api({ summary: '调整会员积分', body: AdjustMemberPointsDto })
+  @RequirePermission('admin:member:list')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Post('point/adjust')
+  @LogOperation({
+    action: BizOperationActions.MEMBER_POINT_ADJUST,
+    targetType: BizOperationTargetTypes.MEMBER,
+    targetIdBodyKey: 'memberId',
+    detailBodyKeys: ['amount', 'remark'],
+  })
+  async adjustMemberPoints(@Body() dto: AdjustMemberPointsDto) {
+    return this.memberService.adjustMemberPoints(dto);
+  }
+
+  @Api({
+    summary: '导出会员数据',
+    produces: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  })
+  @RequirePermission('admin:member:list')
+  @Operlog({ businessType: BusinessType.EXPORT })
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Post('export')
+  async exportData(@Res() res: Response, @Body() query: ListMemberDto): Promise<void> {
+    return this.memberService.export(res, query);
+  }
+}

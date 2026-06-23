@@ -1,0 +1,43 @@
+import { Module, Global } from '@nestjs/common';
+import { AuthModule } from './auth/auth.module';
+import { DeptModule } from './dept/dept.module';
+import { SysConfigModule } from './config/config.module';
+import { DictModule } from './dict/dict.module';
+import { MenuModule } from './menu/menu.module';
+import { NoticeModule } from './notice/notice.module';
+import { PostModule } from './post/post.module';
+import { RoleModule } from './role/role.module';
+import { ToolModule } from './tool/tool.module';
+import { UserModule } from './user/user.module';
+import { TenantModule } from './tenant/tenant.module';
+import { TenantPackageModule } from './tenant-package/tenant-package.module';
+import { TenantAuditModule } from './tenant-audit/tenant-audit.module';
+
+import { FileManagerModule } from './file-manager/file-manager.module';
+import { MessageModule } from './message/message.module';
+import { NotificationModule } from 'src/module/notification/notification.module';
+import { ClientModule } from './client/client.module';
+
+@Global()
+@Module({
+  imports: [
+    AuthModule,
+    SysConfigModule, // 系统配置
+    ClientModule,
+    DeptModule,
+    DictModule,
+    MenuModule,
+    MessageModule, // 消息通知（站内信 CRUD）
+    NotificationModule, // 通用通知服务（多渠道 + 记录查询）
+    NoticeModule,
+    PostModule,
+    RoleModule,
+    TenantModule, // 租户管理
+    TenantPackageModule, // 租户套餐管理
+    TenantAuditModule, // 租户审计日志
+    ToolModule,
+    UserModule,
+    FileManagerModule, // 文件管理
+  ],
+})
+export class SystemModule {}

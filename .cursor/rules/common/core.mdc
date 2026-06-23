@@ -1,0 +1,14 @@
+---
+description: 核心开发原则（兼容层入口；硬规则正文以 AGENTS.md 为准）
+alwaysApply: true
+---
+
+# 核心开发原则
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- 仓库根 `AGENTS.md` §0 硬规则、§3 高风险入口、§5 证据等级、§6 测试门禁矩阵
+- 对应子 `apps/*/AGENTS.md`
+- `.codex/playbooks/*`、`docs/governance/AGENT_OUTPUT_PROTOCOL.md`
+
+规则冲突时以 canonical 为准。

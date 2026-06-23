@@ -1,0 +1,15 @@
+---
+description: Monorepo 项目开发规范（兼容层入口；目录边界与契约链路以 AGENTS.md 为准）
+alwaysApply: true
+---
+
+# Monorepo 项目开发规范
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- 仓库根 `AGENTS.md` §1.2 目录边界与跨 app 契约链路
+- `libs/AGENTS.md`、`scripts/AGENTS.md`
+- `.codex/playbooks/context-scan.md`、`.codex/playbooks/verification-gates.md`
+- 验证分层：根 `AGENTS.md` §4-§6
+
+规则冲突时以 canonical 为准。

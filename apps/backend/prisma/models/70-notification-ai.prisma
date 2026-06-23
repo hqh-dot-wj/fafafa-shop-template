@@ -1,0 +1,88 @@
+// Notification and AI content schema.
+
+// ==================== 消息通知模块 ====================
+
+/// 系统消息表 (站内信)
+model SysMessage {
+  id      Int     @id @default(autoincrement())
+  title   String  @db.VarChar(100) // 标题
+  content String? @db.Text // 内容
+  type    String  @db.VarChar(50) // 类型: ORDER, SYSTEM, NOTICE
+
+  receiverId String  @map("receiver_id") // 接收人ID (通常是MemberID或TenantID)
+  isRead     Boolean @default(false) @map("is_read") // 是否已读
+
+  tenantId String @map("tenant_id") @db.VarChar(20) // 归属租户
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([receiverId])
+  @@index([tenantId])
+  @@map("sys_message")
+}
+
+/// 通知发送记录表 (AC-11)
+model SysNotificationLog {
+  id                Int      @id @default(autoincrement())
+  tenantId          String   @map("tenant_id") @db.VarChar(20)
+  channel           String   @db.VarChar(30) // IN_APP, SMS, WECHAT_TEMPLATE, APP_PUSH
+  target            String   @db.VarChar(100) // 接收目标 (userId/phone/openId)
+  template          String?  @db.VarChar(50) // 模板编码
+  title             String?  @db.VarChar(200)
+  content           String?  @db.Text
+  status            String   @db.VarChar(20) // QUEUED, SENDING, SENT, FAILED
+  errorMsg          String?  @map("error_msg") @db.VarChar(500)
+  bizType           String?  @map("biz_type") @db.VarChar(50)
+  bizRefId          String?  @map("biz_ref_id") @db.VarChar(64)
+  activityId        String?  @map("activity_id") @db.VarChar(64)
+  touchpointCode    String?  @map("touchpoint_code") @db.VarChar(60)
+  touchpointKind    String?  @map("touchpoint_kind") @db.VarChar(20)
+  sceneCode         String?  @map("scene_code") @db.VarChar(50)
+  policySnapshot    Json?    @map("policy_snapshot")
+  providerMessageId String?  @map("provider_message_id") @db.VarChar(100)
+  createTime        DateTime @default(now()) @map("create_time")
+  updateTime        DateTime @updatedAt @map("update_time")
+
+  @@index([tenantId])
+  @@index([bizType, activityId, touchpointCode])
+  @@index([createTime])
+  @@map("sys_notification_log")
+}
+
+model AiPlatformPrompt {
+  id           String   @id @default(cuid())
+  platformCode String   @map("platform_code") @db.VarChar(50)
+  platformName String   @map("platform_name") @db.VarChar(100)
+  icon         String?  @db.VarChar(500)
+  systemPrompt String   @map("system_prompt") @db.Text
+  outputSchema Json     @map("output_schema")
+  maxLength    Int?     @map("max_length")
+  sortOrder    Int      @default(0) @map("sort_order")
+  status       Int      @default(1) @db.SmallInt
+  delFlag      DelFlag  @default(NORMAL) @map("del_flag")
+  tenantId     String   @default("000000") @map("tenant_id") @db.VarChar(20)
+  createTime   DateTime @default(now()) @map("create_time")
+  updateTime   DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, platformCode])
+  @@index([tenantId, status])
+  @@map("ai_platform_prompt")
+}
+
+model AiContentRecord {
+  id               String   @id @default(cuid())
+  memberId         String   @map("member_id") @db.VarChar(50)
+  platformCode     String   @map("platform_code") @db.VarChar(50)
+  userInput        String   @map("user_input") @db.Text
+  generatedContent Json     @map("generated_content")
+  promptTokens     Int?     @map("prompt_tokens")
+  completionTokens Int?     @map("completion_tokens")
+  tenantId         String   @default("000000") @map("tenant_id") @db.VarChar(20)
+  createTime       DateTime @default(now()) @map("create_time")
+
+  member UmsMember @relation(fields: [memberId], references: [memberId])
+
+  @@index([memberId])
+  @@index([tenantId, createTime])
+  @@map("ai_content_record")
+}

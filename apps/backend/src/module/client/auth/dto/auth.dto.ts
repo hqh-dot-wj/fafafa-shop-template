@@ -1,0 +1,90 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, IsObject, MaxLength } from 'class-validator';
+
+export class CheckLoginDto {
+  @ApiProperty({ description: '微信登录临时凭证 code' })
+  @IsNotEmpty({ message: 'code不能为空' })
+  @IsString()
+  code: string;
+}
+
+export class UserInfoObj {
+  @ApiProperty()
+  nickName: string;
+
+  @ApiProperty()
+  avatarUrl: string;
+}
+
+/**
+ * 简化注册 DTO（C 端/小程序）- 无需手机号，使用微信 loginCode
+ * @description 与 admin 的 RegisterDto（用户名密码）区分，避免 Swagger 重复 schema
+ */
+export class ClientRegisterDto {
+  @ApiProperty({ description: '微信登录临时凭证 code (用于换取OpenID)' })
+  @IsNotEmpty({ message: 'loginCode不能为空' })
+  @IsString()
+  loginCode: string;
+
+  @ApiProperty({ description: '当前定位到的租户ID', required: false })
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
+
+  @ApiProperty({ description: '推荐人ID', required: false })
+  @IsOptional()
+  @IsString()
+  referrerId?: string;
+
+  @ApiProperty({ description: '用户信息(昵称头像)', required: false })
+  @IsOptional()
+  @IsObject()
+  userInfo?: UserInfoObj;
+
+  @ApiProperty({
+    description: '注册用头像 data URL（image/png 或 image/jpeg 的 Base64），服务端上传 OSS 后写入会员头像',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2_800_000, { message: '头像数据过大' })
+  avatarImageBase64?: string;
+}
+
+/**
+ * 绑定手机号 DTO
+ */
+export class BindPhoneDto {
+  @ApiProperty({ description: '手机号获取凭证 code (用于换取手机号)' })
+  @IsNotEmpty({ message: 'phoneCode不能为空' })
+  @IsString()
+  phoneCode: string;
+}
+
+// 保留旧的 DTO 以便兼容（可后续删除）
+export class RegisterMobileDto {
+  @ApiProperty({ description: '微信登录临时凭证 code (用于换取OpenID)' })
+  @IsNotEmpty({ message: 'loginCode不能为空' })
+  @IsString()
+  loginCode: string;
+
+  @ApiProperty({ description: '手机号获取凭证 code (用于换取手机号)' })
+  @IsNotEmpty({ message: 'phoneCode不能为空' })
+  @IsString()
+  phoneCode: string;
+
+  @ApiProperty({ description: '当前定位到的租户ID' })
+  @IsNotEmpty({ message: 'tenantId不能为空' })
+  @IsString()
+  tenantId: string;
+
+  @ApiProperty({ description: '推荐人ID', required: false })
+  @IsOptional()
+  @IsString()
+  referrerId?: string;
+
+  @ApiProperty({ description: '用户信息(昵称头像)', required: false })
+  @IsOptional()
+  @IsObject()
+  userInfo?: UserInfoObj;
+}

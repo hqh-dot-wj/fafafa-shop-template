@@ -1,0 +1,60 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "tsconfig.json",
+    "pnpm-workspace.yaml",
+    ".npmrc",
+    ".editorconfig",
+    ".prettierrc.json",
+    ".commitlintrc.json",
+    "eslint.config.mjs"
+  ],
+  "globalPassThroughEnv": ["CI", "NODE_ENV"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "tsconfig.json",
+        "package.json",
+        "prisma/**",
+        "nest-cli.json",
+        "nest-cli.build.json",
+        "vite.config.*",
+        "uno.config.*",
+        "nuxt.config.*",
+        "pages.config.*",
+        "manifest.config.ts"
+      ],
+      "outputs": ["dist/**", ".next/**", "openApi.json", "public/openApi.json"],
+      "cache": true
+    },
+    "generate-types": {
+      "dependsOn": ["@apps/backend#build"],
+      "inputs": ["package.json", "../../apps/backend/public/openApi.json"],
+      "outputs": ["src/api.d.ts", "dist/**"],
+      "cache": true
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": [],
+      "inputs": ["src/**", "eslint.config.*", "tsconfig.json", "package.json"],
+      "cache": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "tsconfig.json", "package.json", "prisma/**"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "test/**", "vitest.config.*", "jest.config.*", "package.json"],
+      "cache": true
+    }
+  }
+}

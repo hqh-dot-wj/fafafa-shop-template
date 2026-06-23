@@ -1,0 +1,41 @@
+service: backend
+module: client-product-query
+metrics:
+  endpoint: /api/metrics
+  required:
+    - name: rate_limit_events_total
+      labels:
+        - source
+        - scope
+        - outcome
+      expected_sources:
+        - express
+        - throttler
+        - overload_guard
+environments:
+  dev:
+    prometheus_rule_file: scripts/monitoring/rate-limit-alert.rules.dev.yml
+    dashboard_queries: scripts/monitoring/rate-limit-dashboard.queries.json
+    verify_command: pnpm --filter @apps/backend verify:rate-limit-alert-rules:dev
+  staging:
+    prometheus_rule_file: scripts/monitoring/rate-limit-alert.rules.staging.yml
+    dashboard_queries: scripts/monitoring/rate-limit-dashboard.queries.json
+    verify_command: pnpm --filter @apps/backend verify:rate-limit-alert-rules:staging
+  prod:
+    prometheus_rule_file: scripts/monitoring/rate-limit-alert.rules.prod.yml
+    dashboard_queries: scripts/monitoring/rate-limit-dashboard.queries.json
+    verify_command: pnpm --filter @apps/backend verify:rate-limit-alert-rules:prod
+alertmanager:
+  required_route_labels:
+    - service
+    - category
+    - severity
+  category_to_receiver:
+    rate-limit: backend-oncall
+    overload: backend-oncall
+    observability: backend-platform
+release_gates:
+  - 验证 prometheus 已抓取 /api/metrics 且 rate_limit_events_total 有数据
+  - 验证对应环境规则文件已加载且规则状态为 normal
+  - 验证 dashboard 查询模板可直接出图
+  - 验证告警路由标签可命中目标接收组

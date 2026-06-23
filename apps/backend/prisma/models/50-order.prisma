@@ -1,0 +1,432 @@
+// Cart and order transaction schema.
+
+// 📌 OMS 订单管理模块
+// ==========================================
+enum OrderStatus {
+  PENDING_PAY @map("1") // 待支付
+  PAID        @map("2") // 已支付待发货/待服务
+  SHIPPED     @map("3") // 已发货/服务中
+  COMPLETED   @map("4") // 已完成
+  CANCELLED   @map("5") // 已取消
+  REFUNDED    @map("6") // 已退款
+}
+
+enum OrderType {
+  PRODUCT @map("1") // 实物订单
+  SERVICE @map("2") // 服务订单
+  MIXED   @map("3") // 混合订单
+}
+
+enum PayStatus {
+  UNPAID   @map("0") // 未支付
+  PAID     @map("1") // 已支付
+  REFUNDED @map("2") // 已退款
+}
+
+enum OrderOutboxStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+}
+
+enum FulfillmentType {
+  PRODUCT
+  SERVICE
+}
+
+enum FulfillmentStatus {
+  PENDING_SHIPMENT
+  PARTIALLY_SHIPPED
+  SHIPPED
+  RECEIVED
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  ACCEPTED
+  IN_SERVICE
+  SERVICE_DONE
+  VERIFIED
+  FULFILLED
+  EXCEPTION
+  CANCELLED
+}
+
+enum FulfillmentEventType {
+  CREATE
+  SHIP
+  RECEIVE
+  FULFILL
+  ASSIGN
+  ACCEPT
+  START
+  DONE
+  VERIFY
+  EXCEPTION
+  CANCEL
+  LEGACY_BACKFILL
+}
+
+enum FulfillmentActorType {
+  ADMIN
+  CUSTOMER
+  WORKER
+  SYSTEM
+}
+
+enum FulfillmentShipmentStatus {
+  CREATED
+  SHIPPED
+  CANCELLED
+}
+
+enum FulfillmentAssignmentStatus {
+  ASSIGNED
+  ACCEPTED
+  IN_SERVICE
+  DONE
+  CANCELLED
+}
+
+enum FulfillmentProofType {
+  IMAGE
+  VIDEO
+  TEXT
+  SIGNATURE
+}
+
+/// 购物车表
+model OmsCartItem {
+  id       String @id @default(uuid())
+  memberId String @map("member_id")
+  tenantId String @map("tenant_id")
+
+  productId String @map("product_id")
+  skuId     String @map("sku_id")
+  quantity  Int    @default(1)
+
+  // 快照信息 (防止商品下架后报错)
+  productName String  @map("product_name")
+  productImg  String  @map("product_img")
+  price       Decimal @db.Decimal(10, 2) // 加购时价格
+  specData    Json?   @map("spec_data") // {"颜色":"红色"}
+
+  // 归因信息
+  sid         String? @db.VarChar(64)
+  shareUserId String? @map("share_user_id")
+
+  // 服务类扩展
+  serviceDate DateTime? @map("service_date")
+
+  // --- 活动上下文 ---
+  activityContextKey   String?  @map("activity_context_key")
+  entrySource          String?  @map("entry_source")
+  activityType         String?  @map("activity_type")
+  activityConfigId     String?  @map("activity_config_id")
+  playInstanceId       String?  @map("play_instance_id")
+  activityNameSnapshot String?  @map("activity_name_snapshot")
+  displayPriceSnapshot Decimal? @map("display_price_snapshot") @db.Decimal(10, 2)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@unique([memberId, tenantId, skuId, activityContextKey])
+  @@index([memberId, tenantId])
+  @@index([memberId, tenantId, sid], map: "idx_oms_cart_item_member_sid")
+  @@map("oms_cart_item")
+}
+
+/// 订单主表
+model OmsOrder {
+  id      String @id @default(cuid())
+  orderSn String @unique @map("order_sn")
+
+  memberId String @map("member_id")
+  tenantId String @map("tenant_id")
+
+  orderType OrderType @map("order_type")
+
+  // 金额
+  totalAmount    Decimal @map("total_amount") @db.Decimal(10, 2)
+  freightAmount  Decimal @default(0) @map("freight_amount") @db.Decimal(10, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(10, 2) // 平台直降/商家补贴等非券非积分折扣，当前未实现故恒为0
+  payAmount      Decimal @map("pay_amount") @db.Decimal(10, 2)
+
+  // 优惠券相关
+  userCouponId   String? @map("user_coupon_id") // 使用的优惠券ID
+  couponDiscount Decimal @default(0) @map("coupon_discount") @db.Decimal(10, 2) // 优惠券优惠金额
+
+  // 积分相关
+  pointsUsed     Int     @default(0) @map("points_used") // 使用的积分数量
+  pointsDiscount Decimal @default(0) @map("points_discount") @db.Decimal(10, 2) // 积分抵扣金额
+  pointsEarned   Int     @default(0) @map("points_earned") // 本次订单获得的积分
+
+  // 收货信息
+  receiverName    String? @map("receiver_name")
+  receiverPhone   String? @map("receiver_phone")
+  receiverAddress String? @map("receiver_address")
+  receiverLat     Float?  @map("receiver_lat")
+  receiverLng     Float?  @map("receiver_lng")
+
+  // 服务类专属
+  bookingTime   DateTime? @map("booking_time")
+  workerId      Int?      @map("worker_id")
+  serviceRemark String?   @map("service_remark")
+
+  // 分销归因
+  shareUserId String? @map("share_user_id")
+  referrerId  String? @map("referrer_id")
+
+  // 状态
+  status    OrderStatus @default(PENDING_PAY)
+  payStatus PayStatus   @default(UNPAID) @map("pay_status")
+
+  // 支付信息
+  payType       String?   @map("pay_type")
+  transactionId String?   @map("transaction_id")
+  payTime       DateTime? @map("pay_time")
+
+  // 时间戳
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  /// 软删语义以 delFlag 为准；deleteTime 仅审计（用户/系统删除时间）
+  delFlag    DelFlag   @default(NORMAL) @map("del_flag")
+  deleteTime DateTime? @map("delete_time")
+
+  remark String? @db.VarChar(500)
+
+  // 部分退款标识：存储已处理的退款单号，替代 remark 字符串检测，防止误判和截断风险
+  partialRefundSn String? @map("partial_refund_sn") @db.VarChar(100)
+
+  items                 OmsOrderItem[]
+  commissions           FinCommission[]
+  payRecords            PayOrderRecord[]
+  refunds               FinRefund[]
+  settlementBills       FinSettlementBill[]
+  settlementAdjustments FinSettlementAdjustment[]
+  playInstances         PlayInstance[]
+  tenant                SysTenant                 @relation(fields: [tenantId], references: [tenantId])
+  fulfillmentOrders     FulfillmentOrder[]
+  fulfillmentEvents     FulfillmentEvent[]
+  fulfillmentShipments  FulfillmentShipment[]
+
+  @@index([memberId, status])
+  @@index([memberId, status, createTime], map: "idx_oms_order_member_status_ctime")
+  @@index([tenantId, createTime])
+  @@index([delFlag])
+  @@map("oms_order")
+}
+
+model OmsOrderEventOutbox {
+  id           BigInt            @id @default(autoincrement())
+  tenantId     String            @map("tenant_id") @db.VarChar(20)
+  orderId      String            @map("order_id")
+  eventType    String            @map("event_type") @db.VarChar(32)
+  dedupeKey    String            @unique @map("dedupe_key") @db.VarChar(160)
+  payload      Json
+  status       OrderOutboxStatus @default(PENDING)
+  attempts     Int               @default(0)
+  lastError    String?           @map("last_error") @db.VarChar(500)
+  availableAt  DateTime          @default(now()) @map("available_at")
+  dispatchedAt DateTime?         @map("dispatched_at")
+  createTime   DateTime          @default(now()) @map("create_time")
+  updateTime   DateTime          @updatedAt @map("update_time")
+
+  @@index([status, availableAt], map: "idx_oms_order_outbox_status_avail")
+  @@index([orderId])
+  @@map("oms_order_event_outbox")
+}
+
+/// 订单明细表
+model OmsOrderItem {
+  id       Int     @id @default(autoincrement())
+  orderId  String  @map("order_id")
+  tenantId String? @map("tenant_id") @db.VarChar(20)
+
+  productId           String       @map("product_id")
+  productName         String       @map("product_name")
+  productImg          String       @map("product_img")
+  productTypeSnapshot ProductType? @map("product_type_snapshot")
+
+  skuId    String @map("sku_id")
+  specData Json?  @map("spec_data")
+
+  price       Decimal @db.Decimal(10, 2)
+  quantity    Int
+  totalAmount Decimal @map("total_amount") @db.Decimal(10, 2)
+
+  // --- [新增] 积分相关 ---
+  // 下单时的积分比例（快照，防止后续修改影响已下单商品）
+  pointsRatio Int @default(100) @map("points_ratio")
+
+  // 该商品产生的积分
+  earnedPoints Int @default(0) @map("earned_points")
+
+  // --- 活动上下文快照 ---
+  activityContextKey     String?  @map("activity_context_key")
+  entrySource            String?  @map("entry_source")
+  activityType           String?  @map("activity_type")
+  activityConfigId       String?  @map("activity_config_id")
+  playInstanceId         String?  @map("play_instance_id")
+  activityNameSnapshot   String?  @map("activity_name_snapshot")
+  activityPriceSnapshot  Decimal? @map("activity_price_snapshot") @db.Decimal(10, 2)
+  activityStatusSnapshot String?  @map("activity_status_snapshot")
+
+  // --- 佣金快照 ---
+  activityCommissionModeSnapshot String?  @map("activity_commission_mode_snapshot")
+  activityCommissionRateSnapshot Decimal? @map("activity_commission_rate_snapshot") @db.Decimal(5, 2)
+  commissionRuleSource           String?  @map("commission_rule_source")
+  commissionPoolSnapshot         Decimal? @map("commission_pool_snapshot") @db.Decimal(10, 2)
+  l1WeightSnapshot               Decimal? @map("l1_weight_snapshot") @db.Decimal(5, 2)
+  l2WeightSnapshot               Decimal? @map("l2_weight_snapshot") @db.Decimal(5, 2)
+
+  // --- 金额明细 ---
+  orderItemOriginalAmount    Decimal? @map("order_item_original_amount") @db.Decimal(10, 2)
+  orderItemDiscountAllocated Decimal? @map("order_item_discount_allocated") @db.Decimal(10, 2)
+  orderItemFinalPaid         Decimal? @map("order_item_final_paid") @db.Decimal(10, 2)
+
+  // --- 裁决快照 ---
+  resolutionSnapshot Json? @map("resolution_snapshot")
+
+  playInstanceRef          PlayInstance?             @relation("OrderItemToPlayInstance", fields: [playInstanceId], references: [id])
+  playInstanceBinding      PlayInstance?             @relation("PlayInstanceToOrderItem")
+  fulfillmentOrders        FulfillmentOrder[]
+  fulfillmentShipmentItems FulfillmentShipmentItem[]
+
+  order OmsOrder @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("oms_order_item")
+}
+
+model FulfillmentOrder {
+  id          String            @id @default(cuid())
+  tenantId    String            @map("tenant_id") @db.VarChar(20)
+  orderId     String            @map("order_id")
+  orderItemId Int               @map("order_item_id")
+  type        FulfillmentType
+  status      FulfillmentStatus
+  version     Int               @default(0)
+
+  exceptionReason String?   @map("exception_reason") @db.VarChar(500)
+  completedAt     DateTime? @map("completed_at")
+  cancelledAt     DateTime? @map("cancelled_at")
+  createTime      DateTime  @default(now()) @map("create_time")
+  updateTime      DateTime  @updatedAt @map("update_time")
+
+  order     OmsOrder     @relation(fields: [orderId], references: [id])
+  orderItem OmsOrderItem @relation(fields: [orderItemId], references: [id])
+
+  events        FulfillmentEvent[]
+  shipments     FulfillmentShipment[]
+  shipmentItems FulfillmentShipmentItem[]
+  assignments   FulfillmentAssignment[]
+  proofs        FulfillmentProof[]
+
+  @@unique([tenantId, orderId, orderItemId, type], map: "uk_fulfillment_order_item_type")
+  @@index([tenantId, status, createTime], map: "idx_fulfillment_order_status_ctime")
+  @@index([orderId], map: "idx_fulfillment_order_order")
+  @@map("fulfillment_order")
+}
+
+model FulfillmentEvent {
+  id                 String               @id @default(cuid())
+  tenantId           String               @map("tenant_id") @db.VarChar(20)
+  fulfillmentOrderId String               @map("fulfillment_order_id")
+  orderId            String               @map("order_id")
+  eventType          FulfillmentEventType @map("event_type")
+  fromStatus         FulfillmentStatus?   @map("from_status")
+  toStatus           FulfillmentStatus?   @map("to_status")
+  actorType          FulfillmentActorType @map("actor_type")
+  actorId            String?              @map("actor_id") @db.VarChar(64)
+  operationId        String?              @map("operation_id") @db.VarChar(64)
+  payloadJson        Json?                @map("payload_json")
+  remark             String?              @db.VarChar(500)
+  createTime         DateTime             @default(now()) @map("create_time")
+
+  fulfillmentOrder FulfillmentOrder @relation(fields: [fulfillmentOrderId], references: [id])
+  order            OmsOrder         @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, fulfillmentOrderId, operationId, eventType], map: "uk_fulfillment_event_operation")
+  @@index([tenantId, orderId, createTime], map: "idx_fulfillment_event_order_ctime")
+  @@map("fulfillment_event")
+}
+
+model FulfillmentShipment {
+  id                 String                    @id @default(cuid())
+  tenantId           String                    @map("tenant_id") @db.VarChar(20)
+  fulfillmentOrderId String                    @map("fulfillment_order_id")
+  orderId            String                    @map("order_id")
+  carrierCode        String?                   @map("carrier_code") @db.VarChar(64)
+  carrierName        String?                   @map("carrier_name") @db.VarChar(100)
+  trackingNo         String?                   @map("tracking_no") @db.VarChar(100)
+  shippedAt          DateTime?                 @map("shipped_at")
+  status             FulfillmentShipmentStatus @default(CREATED)
+  remark             String?                   @db.VarChar(500)
+  createdBy          String?                   @map("created_by") @db.VarChar(64)
+  createTime         DateTime                  @default(now()) @map("create_time")
+
+  fulfillmentOrder FulfillmentOrder          @relation(fields: [fulfillmentOrderId], references: [id])
+  order            OmsOrder                  @relation(fields: [orderId], references: [id])
+  items            FulfillmentShipmentItem[]
+
+  @@index([tenantId, orderId, createTime], map: "idx_fulfillment_shipment_order_ctime")
+  @@index([trackingNo], map: "idx_fulfillment_shipment_tracking")
+  @@map("fulfillment_shipment")
+}
+
+model FulfillmentShipmentItem {
+  id                 String  @id @default(cuid())
+  shipmentId         String  @map("shipment_id")
+  fulfillmentOrderId String  @map("fulfillment_order_id")
+  orderItemId        Int     @map("order_item_id")
+  skuId              String  @map("sku_id")
+  quantity           Int
+  packageNo          String? @map("package_no") @db.VarChar(64)
+
+  shipment         FulfillmentShipment @relation(fields: [shipmentId], references: [id])
+  fulfillmentOrder FulfillmentOrder    @relation(fields: [fulfillmentOrderId], references: [id])
+  orderItem        OmsOrderItem        @relation(fields: [orderItemId], references: [id])
+
+  @@index([fulfillmentOrderId], map: "idx_fulfillment_shipment_item_fulfillment")
+  @@index([orderItemId], map: "idx_fulfillment_shipment_item_order_item")
+  @@map("fulfillment_shipment_item")
+}
+
+model FulfillmentAssignment {
+  id                 String                      @id @default(cuid())
+  tenantId           String                      @map("tenant_id") @db.VarChar(20)
+  fulfillmentOrderId String                      @map("fulfillment_order_id")
+  workerId           Int                         @map("worker_id")
+  status             FulfillmentAssignmentStatus @default(ASSIGNED)
+  assignedAt         DateTime?                   @map("assigned_at")
+  acceptedAt         DateTime?                   @map("accepted_at")
+  startedAt          DateTime?                   @map("started_at")
+  doneAt             DateTime?                   @map("done_at")
+  cancelledAt        DateTime?                   @map("cancelled_at")
+  remark             String?                     @db.VarChar(500)
+  createTime         DateTime                    @default(now()) @map("create_time")
+  updateTime         DateTime                    @updatedAt @map("update_time")
+
+  fulfillmentOrder FulfillmentOrder @relation(fields: [fulfillmentOrderId], references: [id])
+
+  @@unique([fulfillmentOrderId, workerId], map: "uk_fulfillment_assignment_worker")
+  @@index([tenantId, workerId, status], map: "idx_fulfillment_assignment_worker_status")
+  @@map("fulfillment_assignment")
+}
+
+model FulfillmentProof {
+  id                 String               @id @default(cuid())
+  fulfillmentOrderId String               @map("fulfillment_order_id")
+  type               FulfillmentProofType
+  url                String?
+  text               String?
+  payloadJson        Json?                @map("payload_json")
+  uploadedByType     FulfillmentActorType @map("uploaded_by_type")
+  uploadedById       String?              @map("uploaded_by_id") @db.VarChar(64)
+  createTime         DateTime             @default(now()) @map("create_time")
+
+  fulfillmentOrder FulfillmentOrder @relation(fields: [fulfillmentOrderId], references: [id])
+
+  @@index([fulfillmentOrderId, createTime], map: "idx_fulfillment_proof_order_ctime")
+  @@map("fulfillment_proof")
+}

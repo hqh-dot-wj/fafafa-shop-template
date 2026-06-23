@@ -1,0 +1,59 @@
+---
+description: Force parent Agent to delegate matching work to project subagents via Task tool (when Task is available).
+alwaysApply: true
+---
+
+# Subagent delegation (parent Agent only)
+
+Canonical roles: `.codex/playbooks/subagent-roles.md`. Definitions: `.cursor/agents/*.md`.
+
+## Reliable trigger (verified in Cursor / Claude / OpenAI)
+
+When the user says to **launch the Task tool** with a named subagent (e.g. `review-money`), **do it immediately**—do not Grep the repo first in the parent thread.
+
+Example user line (works even when plain Chinese business prompts do not auto-delegate):
+
+```text
+Launch the Task tool with subagent_type review-money. Parent only summarizes after the subagent returns.
+```
+
+Implicit prompts alone (e.g. "review refund code") are **unreliable**; still **prefer** proactive Task delegation when the table below matches and Task exists.
+
+## Before doing heavy work
+
+1. State the model you are running under (if known).
+2. If you have a **Task** tool: **delegate** instead of grepping/reading the whole repo in the parent thread.
+3. If you **do not** have Task: say so explicitly, then do minimal read-only work or ask the user to switch Agent model off **Auto/Composer 1** (use Sonnet 4.6, GPT-5.x, or Opus).
+
+## MUST delegate via Task when the user task matches
+
+| User intent / keywords | subagent_type |
+| --- | --- |
+| where docs/rules live, cross-app scope, context-scan, Harness paths | `doc-explorer` |
+| test spec before backend tests, TEST_SPEC, write spec not code | `test-spec` |
+| auth, tenant, RBAC, permission, injection, secrets | `review-security` |
+| finance, payment, refund, commission, wallet, reconciliation, FinRefund, amount precision | `review-money` |
+| OpenAPI, common-types, generate-types, contract drift | `review-contract` |
+| test quality, mock fake-green, smoke-only, missing test cases | `review-tests` |
+| implement after spec / exec-plan Phase | `implementer` |
+| run fix:changed, check:slice, report exit codes | `test-runner` |
+
+## How to delegate
+
+Call **Task** with `subagent_type` = name above and a prompt that includes:
+
+- task mode, path type, high-risk, read-only or write scope
+- file/path scope from the user
+- required playbook paths from `subagent-roles.md`
+- forbid claiming verify/PhaseDone without exit codes
+
+Parent summarizes subagent output only; parent does **not** repeat full codebase search when a subagent was delegated.
+
+## Parallel
+
+For multi-perspective review (security + money + tests), launch **multiple Task calls in one turn** (parallel), then merge findings.
+
+## Do not
+
+- Substitute subagents with built-in Explore for money/security/contract review (Explore is for broad search only).
+- Skip Task and do the same work in parent when Task is available and the table above matches.

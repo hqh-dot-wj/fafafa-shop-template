@@ -1,0 +1,13 @@
+---
+description: 已弃用；执行策略迁移到 .codex/playbooks/context-scan.md
+alwaysApply: false
+---
+
+# 已弃用
+
+原先的开发认知流程已迁移到仓库 canonical 执行层：
+
+- `.codex/playbooks/context-scan.md`
+
+本文件保留仅为兼容旧引用，不再承载规范正文。
+

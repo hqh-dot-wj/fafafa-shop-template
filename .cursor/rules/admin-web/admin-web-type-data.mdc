@@ -1,0 +1,15 @@
+---
+description: Admin-Web 类型与数据（兼容层入口；共享类型/Props/Emits/字典与 API 约束以 AGENTS.md 为准）
+globs: apps/admin-web/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# Admin-Web Type And Data
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- `apps/admin-web/AGENTS.md`、仓库根 `AGENTS.md` §0 硬规则（类型 / 契约 / 跨包导入）
+- `apps/admin-web/docs/conventions.md`（API 类型、提交体、Naive UI hooks）
+- `apps/admin-web/docs/troubleshooting.md`（TS 爆红查询表）
+
+规则冲突时以 canonical 为准。

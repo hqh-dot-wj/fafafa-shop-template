@@ -1,0 +1,244 @@
+# ============================================================================
+# CODEOWNERS - 代码所有权与审查规则
+# ============================================================================
+# 
+# 说明：
+# - 每个文件/目录可以有多个所有者
+# - 最后匹配的规则优先级最高
+# - PR 需要所有相关所有者批准才能合并
+# - 使用 GitHub 用户名或团队名（@org/team-name）
+#
+# 文档：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 默认所有者（兜底规则）
+# ----------------------------------------------------------------------------
+* @hqh-dot-wj
+
+# ============================================================================
+# 后端服务 (Backend)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 后端 - 核心基础设施
+# ----------------------------------------------------------------------------
+/apps/backend/src/common/                    @hqh-dot-wj
+/apps/backend/src/prisma/                    @hqh-dot-wj
+/apps/backend/src/shared/                    @hqh-dot-wj
+/apps/backend/src/main.ts                    @hqh-dot-wj
+/apps/backend/src/app.module.ts              @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 金融模块（高风险，需要严格审查）
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/finance/            @hqh-dot-wj
+/apps/backend/src/module/finance/commission/ @hqh-dot-wj
+/apps/backend/src/module/finance/wallet/     @hqh-dot-wj
+/apps/backend/src/module/finance/withdrawal/ @hqh-dot-wj
+/apps/backend/src/module/finance/settlement/ @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 营销模块
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/marketing/          @hqh-dot-wj
+/apps/backend/src/module/marketing/coupon/   @hqh-dot-wj
+/apps/backend/src/module/marketing/points/   @hqh-dot-wj
+/apps/backend/src/module/marketing/activity/ @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 商城模块
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/store/              @hqh-dot-wj
+/apps/backend/src/module/store/order/        @hqh-dot-wj
+/apps/backend/src/module/store/cart/         @hqh-dot-wj
+/apps/backend/src/module/store/payment/      @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 商品管理模块
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/pms/                @hqh-dot-wj
+/apps/backend/src/module/pms/product/        @hqh-dot-wj
+/apps/backend/src/module/pms/category/       @hqh-dot-wj
+/apps/backend/src/module/pms/brand/          @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 用户与权限模块
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/admin/              @hqh-dot-wj
+/apps/backend/src/module/client/             @hqh-dot-wj
+/apps/backend/src/module/auth/               @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 后端 - 系统模块
+# ----------------------------------------------------------------------------
+/apps/backend/src/module/system/             @hqh-dot-wj
+/apps/backend/src/module/tenant/             @hqh-dot-wj
+
+# ============================================================================
+# 数据库 (Database)
+# ============================================================================
+/apps/backend/prisma/                        @hqh-dot-wj
+/apps/backend/prisma/schema.prisma           @hqh-dot-wj
+/apps/backend/prisma/migrations/             @hqh-dot-wj
+/apps/backend/prisma/seed.ts                 @hqh-dot-wj
+
+# ============================================================================
+# 前端 - 管理后台 (Admin Web)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 前端 - 核心基础设施
+# ----------------------------------------------------------------------------
+/apps/admin-web/src/main.ts                  @hqh-dot-wj
+/apps/admin-web/src/App.vue                  @hqh-dot-wj
+/apps/admin-web/src/router/                  @hqh-dot-wj
+/apps/admin-web/src/store/                   @hqh-dot-wj
+/apps/admin-web/src/layouts/                 @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 前端 - 业务模块
+# ----------------------------------------------------------------------------
+/apps/admin-web/src/views/system/            @hqh-dot-wj
+/apps/admin-web/src/views/finance/           @hqh-dot-wj
+/apps/admin-web/src/views/marketing/         @hqh-dot-wj
+/apps/admin-web/src/views/store/             @hqh-dot-wj
+/apps/admin-web/src/views/pms/               @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 前端 - 共享组件与工具
+# ----------------------------------------------------------------------------
+/apps/admin-web/src/components/              @hqh-dot-wj
+/apps/admin-web/src/utils/                   @hqh-dot-wj
+/apps/admin-web/src/hooks/                   @hqh-dot-wj
+/apps/admin-web/src/service/                 @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 前端 - 包管理
+# ----------------------------------------------------------------------------
+/apps/admin-web/packages/                    @hqh-dot-wj
+
+# ============================================================================
+# 前端 - 小程序 (Miniapp Client)
+# ============================================================================
+/apps/miniapp-client/                        @hqh-dot-wj
+/apps/miniapp-client/src/pages/              @hqh-dot-wj
+/apps/miniapp-client/src/components/         @hqh-dot-wj
+/apps/miniapp-client/src/utils/              @hqh-dot-wj
+
+# ============================================================================
+# 共享库 (Shared Libraries)
+# ============================================================================
+/libs/                                       @hqh-dot-wj
+/libs/common-types/                          @hqh-dot-wj
+/libs/shared-utils/                          @hqh-dot-wj
+
+# ============================================================================
+# 配置文件 (Configuration)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Monorepo 配置（需要特别谨慎）
+# ----------------------------------------------------------------------------
+/package.json                                @hqh-dot-wj
+/pnpm-workspace.yaml                         @hqh-dot-wj
+/pnpm-lock.yaml                              @hqh-dot-wj
+/turbo.json                                  @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# TypeScript 配置
+# ----------------------------------------------------------------------------
+/tsconfig.base.json                          @hqh-dot-wj
+/apps/backend/tsconfig.json                  @hqh-dot-wj
+/apps/admin-web/tsconfig.json                @hqh-dot-wj
+/apps/miniapp-client/tsconfig.json           @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 代码质量工具
+# ----------------------------------------------------------------------------
+/.eslintrc.*                                 @hqh-dot-wj
+/.prettierrc.*                               @hqh-dot-wj
+/.commitlintrc.*                             @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# CI/CD 配置（高风险）
+# ----------------------------------------------------------------------------
+/.github/workflows/                          @hqh-dot-wj
+/.github/CODEOWNERS                          @hqh-dot-wj
+/deploy/                                     @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 环境变量（安全敏感）
+# ----------------------------------------------------------------------------
+**/.env.example                              @hqh-dot-wj
+**/.env.production                           @hqh-dot-wj
+**/deploy.config.*                           @hqh-dot-wj
+
+# ============================================================================
+# 文档 (Documentation)
+# ============================================================================
+/docs/                                       @hqh-dot-wj
+/README.md                                   @hqh-dot-wj
+/CHANGELOG.md                                @hqh-dot-wj
+/CONTRIBUTING.md                             @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 架构与设计文档（重要决策）
+# ----------------------------------------------------------------------------
+/docs/design/                                @hqh-dot-wj
+/docs/adr/                                   @hqh-dot-wj
+
+# ============================================================================
+# 特殊规则（最高优先级）
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# 安全相关（需要安全团队审查）
+# ----------------------------------------------------------------------------
+**/auth/**                                   @hqh-dot-wj
+**/security/**                               @hqh-dot-wj
+**/crypto/**                                 @hqh-dot-wj
+**/*-secret*                                 @hqh-dot-wj
+**/*-key*                                    @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 数据库迁移（需要 DBA 审查）
+# ----------------------------------------------------------------------------
+**/migrations/**                             @hqh-dot-wj
+
+# ----------------------------------------------------------------------------
+# 支付相关（高风险）
+# ----------------------------------------------------------------------------
+**/payment/**                                @hqh-dot-wj
+**/wallet/**                                 @hqh-dot-wj
+**/withdrawal/**                             @hqh-dot-wj
+
+# ============================================================================
+# 团队扩展示例（当团队扩大时取消注释并修改）
+# ============================================================================
+#
+# # 金融团队
+# /apps/backend/src/module/finance/          @org/finance-team @hqh-dot-wj
+#
+# # 营销团队
+# /apps/backend/src/module/marketing/        @org/marketing-team @hqh-dot-wj
+#
+# # 前端团队
+# /apps/admin-web/                           @org/frontend-team @hqh-dot-wj
+# /apps/miniapp-client/                      @org/frontend-team @hqh-dot-wj
+#
+# # 平台团队（基础设施）
+# /libs/                                     @org/platform-team @hqh-dot-wj
+# /.github/workflows/                        @org/platform-team @org/devops-team @hqh-dot-wj
+#
+# # DevOps 团队
+# **/Dockerfile                              @org/devops-team @hqh-dot-wj
+# **/docker-compose.yml                      @org/devops-team @hqh-dot-wj
+# /.github/workflows/                        @org/devops-team @hqh-dot-wj
+#
+# # 安全团队（必须审查）
+# **/auth/**                                 @org/security-team @hqh-dot-wj
+# **/payment/**                              @org/security-team @org/finance-team @hqh-dot-wj
+# **/migrations/**                           @org/dba-team @hqh-dot-wj
+#
+# ============================================================================

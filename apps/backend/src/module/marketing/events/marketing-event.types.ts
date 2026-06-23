@@ -1,0 +1,446 @@
+/**
+ * 营销事件类型定义
+ *
+ * @description
+ * 定义营销系统中所有的事件类型和事件数据结构。
+ * 事件驱动机制用于解耦模块依赖，提升系统可扩展性。
+ *
+ * @example
+ * // 记录实例成功事件统计和消息触点
+ * await messageTouchpointDispatcher.dispatch({
+ *   type: MarketingEventType.INSTANCE_SUCCESS,
+ *   instanceId: 'xxx',
+ *   configId: 'yyy',
+ *   memberId: 'zzz',
+ *   payload: { ... },
+ *   timestamp: new Date(),
+ * });
+ */
+
+/**
+ * 营销事件类型枚举
+ *
+ * @description
+ * 仅定义稳定事件编码。事件分类、可触发范围、消费者和幂等语义统一维护在
+ * marketing-event.catalog.ts，避免各监听器各自维护一套白名单。
+ */
+export enum MarketingEventType {
+  // ========== 实例事件 ==========
+
+  /**
+   * 实例创建事件
+   * - 触发时机：用户参与活动，创建实例成功后
+   * - 用途：记录用户参与行为、触发数据分析
+   */
+  INSTANCE_CREATED = 'instance.created',
+
+  /**
+   * 实例支付成功事件
+   * - 触发时机：用户完成支付，实例状态从 PENDING_PAY 变为 PAID
+   * - 用途：触发后续业务逻辑（如拼团检查、权益发放准备）
+   */
+  INSTANCE_PAID = 'instance.paid',
+
+  /**
+   * 实例成功事件
+   * - 触发时机：活动条件达成，实例状态变为 SUCCESS
+   * - 用途：发放权益、结算资金、发送通知、记录成功数据
+   */
+  INSTANCE_SUCCESS = 'instance.success',
+
+  /**
+   * 实例失败事件
+   * - 触发时机：活动条件未达成，实例状态变为 FAILED
+   * - 用途：触发退款流程、发送失败通知、记录失败原因
+   */
+  INSTANCE_FAILED = 'instance.failed',
+
+  /**
+   * 实例超时事件
+   * - 触发时机：实例超过有效期，状态变为 TIMEOUT
+   * - 用途：释放库存、触发退款、发送超时通知
+   */
+  INSTANCE_TIMEOUT = 'instance.timeout',
+
+  /**
+   * 实例退款事件
+   * - 触发时机：用户申请退款或系统自动退款，状态变为 REFUNDED
+   * - 用途：处理退款逻辑、发送退款通知、更新财务数据
+   */
+  INSTANCE_REFUNDED = 'instance.refunded',
+
+  // ========== 优惠券事件 ==========
+
+  /**
+   * 优惠券领取事件
+   * - 触发时机：优惠券领取/发放成功后
+   * - 用途：统计领取转化、触发消息通知
+   */
+  COUPON_CLAIMED = 'coupon.claimed',
+
+  /**
+   * 优惠券核销事件
+   * - 触发时机：订单支付后优惠券核销成功
+   * - 用途：统计核销效果、触发后续运营动作
+   */
+  COUPON_USED = 'coupon.used',
+
+  /**
+   * 优惠券过期事件
+   * - 触发时机：定时任务将优惠券标记为已过期后
+   * - 用途：统计过期损耗、触达召回策略
+   */
+  COUPON_EXPIRED = 'coupon.expired',
+
+  // ========== 积分事件 ==========
+
+  /**
+   * 积分获取事件
+   * - 触发时机：积分增加成功后（签到、任务、下单奖励、后台发放）
+   * - 用途：积分来源统计、运营触达
+   */
+  POINTS_EARNED = 'points.earned',
+
+  /**
+   * 积分使用事件
+   * - 触发时机：积分抵扣成功后
+   * - 用途：积分消耗分析、成本核算
+   */
+  POINTS_USED = 'points.used',
+
+  /**
+   * 积分过期事件
+   * - 触发时机：积分过期任务处理成功后
+   * - 用途：积分损耗统计、召回策略触发
+   */
+  POINTS_EXPIRED = 'points.expired',
+
+  // ========== 订单集成事件 ==========
+
+  /**
+   * 订单优惠计算事件
+   * - 触发时机：订单优惠计算完成后
+   * - 用途：优惠效果分析、策略调优
+   */
+  INTEGRATION_ORDER_DISCOUNT_CALCULATED = 'integration.order.discount_calculated',
+
+  /**
+   * 订单创建集成事件
+   * - 触发时机：订单创建流程中完成锁券/冻结积分后
+   * - 用途：订单营销联动审计
+   */
+  INTEGRATION_ORDER_CREATED = 'integration.order.created',
+
+  /**
+   * 订单支付集成事件
+   * - 触发时机：订单支付流程营销处理完成后
+   * - 用途：核销与积分发放追踪
+   */
+  INTEGRATION_ORDER_PAID = 'integration.order.paid',
+
+  /**
+   * 订单取消集成事件
+   * - 触发时机：订单取消流程营销回滚完成后
+   * - 用途：回滚链路审计
+   */
+  INTEGRATION_ORDER_CANCELLED = 'integration.order.cancelled',
+
+  /**
+   * 订单退款集成事件
+   * - 触发时机：订单退款流程营销回滚完成后
+   * - 用途：退款补偿链路追踪
+   */
+  INTEGRATION_ORDER_REFUNDED = 'integration.order.refunded',
+
+  // ========== 玩法事件 ==========
+
+  /**
+   * 拼团满员事件
+   * - 触发时机：拼团人数达到要求
+   * - 用途：触发拼团成功逻辑、通知所有参团用户
+   */
+  GROUP_FULL = 'group.full',
+
+  /**
+   * 拼团失败事件
+   * - 触发时机：拼团超时未满员
+   * - 用途：触发退款流程、通知所有参团用户
+   */
+  GROUP_FAILED = 'group.failed',
+
+  /**
+   * 秒杀售罄事件
+   * - 触发时机：秒杀商品库存为0
+   * - 用途：关闭秒杀活动、更新前端展示
+   */
+  FLASH_SALE_SOLD_OUT = 'flash_sale.sold_out',
+
+  /**
+   * 课程开班事件
+   * - 触发时机：拼班课程人数达到开班要求
+   * - 用途：通知所有学员、安排课程、发放学习资料
+   */
+  COURSE_OPEN = 'course.open',
+
+  // ========== 拼课专用事件 ==========
+
+  /**
+   * 拼课开团事件
+   * - 触发时机：团长开团成功后
+   * - 用途：触点、展示刷新、审计
+   */
+  COURSE_GROUP_TEAM_CREATED = 'course_group.team_created',
+
+  /**
+   * 拼课真实成员参团事件
+   * - 触发时机：真实用户支付参团成功后
+   * - 用途：团队投影重算、触点、任务
+   */
+  COURSE_GROUP_MEMBER_JOINED = 'course_group.member_joined',
+
+  /**
+   * 拼课虚拟补位事件
+   * - 触发时机：系统或运营追加虚拟补位事实后
+   * - 用途：审计、风控、团队投影重算
+   */
+  COURSE_GROUP_VIRTUAL_FILLED = 'course_group.virtual_filled',
+
+  /**
+   * 拼课成团事件
+   * - 触发时机：团队投影达到成团条件后
+   * - 用途：课程扩展、排课准备、通知
+   */
+  COURSE_GROUP_TEAM_FORMED = 'course_group.team_formed',
+
+  /**
+   * 拼课失败事件
+   * - 触发时机：招募失败、超时或关闭团队后
+   * - 用途：退款提醒、补偿处理、审计
+   */
+  COURSE_GROUP_TEAM_FAILED = 'course_group.team_failed',
+
+  /**
+   * 拼课排课绑定事件
+   * - 触发时机：团队绑定或生成课表后
+   * - 用途：上课通知、资源审计
+   */
+  COURSE_GROUP_SCHEDULE_BOUND = 'course_group.schedule_bound',
+
+  /**
+   * 拼课开课事件
+   * - 触发时机：门店确认上课后
+   * - 用途：运行状态、通知
+   */
+  COURSE_GROUP_CLASS_STARTED = 'course_group.class_started',
+
+  /**
+   * 拼课考勤确认事件
+   * - 触发时机：真实学员考勤确认后
+   * - 用途：完课奖励、统计
+   */
+  COURSE_GROUP_ATTENDANCE_CONFIRMED = 'course_group.attendance_confirmed',
+
+  /**
+   * 拼课结课事件
+   * - 触发时机：课程结课后
+   * - 用途：课时消耗、复购触点、统计
+   */
+  COURSE_GROUP_CLASS_FINISHED = 'course_group.class_finished',
+
+  // ========== 营销决议 / C 端商品缓存失效 ==========
+
+  /**
+   * 活动手动下架
+   * - 触发时机：运营将活动配置下架或等价操作
+   * - 用途：清除关联商品详情与列表聚合缓存
+   */
+  ACTIVITY_OFF_SHELF = 'activity.manualOffShelf',
+
+  /**
+   * 活动库存耗尽
+   * - 触发时机：活动库存归零
+   * - 用途：清除关联商品详情与列表聚合缓存
+   */
+  ACTIVITY_STOCK_DEPLETED = 'activity.stockDepleted',
+
+  /**
+   * 门店玩法配置状态变更
+   * - 触发时机：storePlayConfig 上下架等状态更新
+   * - 用途：清除该配置关联商品详情缓存
+   */
+  CONFIG_STATUS_CHANGED = 'storePlayConfig.statusChanged',
+
+  /**
+   * 场景发布成功
+   * - 触发时机：场景发布快照创建成功后
+   * - 用途：失效场景快照缓存，确保 C 端读取最新发布版本
+   */
+  SCENE_RELEASE_PUBLISHED = 'scene.release.published',
+
+  /**
+   * 策略配置变更
+   * - 触发时机：SOURCE/RESOLVER/AUDIENCE/SORT/CARD_TEMPLATE 保存后
+   * - 用途：失效依赖策略的场景快照缓存与聚合缓存
+   */
+  POLICY_CONFIG_CHANGED = 'policy.config.changed',
+
+  /**
+   * 活动优先级规则变更
+   * - 触发时机：优先级规则新增/更新/删除/初始化后
+   * - 用途：失效依赖优先级裁决的缓存
+   */
+  PRIORITY_RULE_CHANGED = 'resolution.priorityRule.changed',
+}
+
+/**
+ * 营销事件数据结构
+ *
+ * @description
+ * 所有营销事件都遵循此数据结构，确保事件数据的完整性和一致性。
+ */
+export interface MarketingEvent {
+  /**
+   * 租户ID（可选）
+   * - 用于多租户隔离的事件消费
+   */
+  tenantId?: string;
+
+  /**
+   * 事件类型
+   * @see MarketingEventType
+   */
+  type: MarketingEventType;
+
+  /**
+   * 实例ID
+   * - 关联的营销实例ID
+   * - 用于追踪事件来源
+   */
+  instanceId: string;
+
+  /**
+   * 配置ID
+   * - 关联的活动配置ID
+   * - 用于查询活动规则和设置
+   */
+  configId: string;
+
+  /**
+   * 用户ID
+   * - 触发事件的用户ID
+   * - 用于用户行为分析和通知
+   */
+  memberId: string;
+
+  /**
+   * 事件负载数据
+   * - 包含事件相关的业务数据
+   * - 不同事件类型的 payload 结构可能不同
+   *
+   * @example
+   * // 拼团满员事件
+   * {
+   *   groupId: 'xxx',
+   *   participants: ['user1', 'user2', 'user3'],
+   *   totalAmount: 597
+   * }
+   *
+   * // 实例成功事件
+   * {
+   *   orderSn: 'xxx',
+   *   amount: 199,
+   *   assetType: 'COURSE',
+   *   assetId: 'yyy'
+   * }
+   */
+  payload: Record<string, unknown>;
+
+  /**
+   * 事件时间戳
+   * - 事件发生的时间
+   * - 用于事件排序和时间分析
+   */
+  timestamp: Date;
+
+  /**
+   * 链路追踪 ID
+   * - 用于把创建、支付、成功等事件串成同一条探针链路
+   */
+  traceId?: string;
+
+  /**
+   * 事件来源步骤
+   * - 用于标识事件来自实例创建、状态流转或其他业务步骤
+   */
+  sourceStep?: string;
+}
+
+/**
+ * 营销决议侧缓存失效事件负载（与 EventEmitter2 字符串事件名配合使用）
+ */
+export interface MarketingResolutionCachePayload {
+  configId: string;
+  productId: string;
+  tenantId: string;
+  traceId?: string;
+}
+
+/**
+ * 场景发布缓存失效负载
+ */
+export interface MarketingSceneReleasePublishedPayload {
+  tenantId: string;
+  sceneCode: string;
+  releaseNo: number;
+  publishedBy: string;
+  traceId?: string;
+}
+
+/**
+ * 策略变更缓存失效负载
+ */
+export interface MarketingPolicyChangedPayload {
+  tenantId: string;
+  policyCode: string;
+  policyType: 'SOURCE' | 'RESOLVER' | 'AUDIENCE' | 'SORT' | 'CARD_TEMPLATE';
+  traceId?: string;
+}
+
+/**
+ * 优先级规则变更缓存失效负载
+ */
+export interface MarketingPriorityRuleChangedPayload {
+  tenantId: string;
+  action: 'UPSERT' | 'REMOVE' | 'INIT_DEFAULTS';
+  activityType?: string;
+  traceId?: string;
+}
+
+/**
+ * 事件监听器选项
+ *
+ * @description
+ * 用于配置事件监听器的行为
+ */
+export interface EventListenerOptions {
+  /**
+   * 是否异步处理
+   * - true: 异步处理，不阻塞事件发送
+   * - false: 同步处理，等待处理完成
+   */
+  async?: boolean;
+
+  /**
+   * 重试次数
+   * - 监听器处理失败时的重试次数
+   * - 默认不重试
+   */
+  retries?: number;
+
+  /**
+   * 超时时间（毫秒）
+   * - 监听器处理的最大时间
+   * - 超时后视为失败
+   */
+  timeout?: number;
+}

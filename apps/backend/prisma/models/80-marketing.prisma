@@ -1,0 +1,1375 @@
+// Marketing play, coupon, points, campaign, scene, and attribution schema.
+
+// ==========================================
+// 📌 营销玩法商品化平台 (MaaS) 模型
+// ==========================================
+enum MarketingStockMode {
+  STRONG_LOCK // 强互斥 (实物)
+  LAZY_CHECK // 弱互斥 (服务)
+}
+
+/// 玩法模板 (总部定义)
+model PlayTemplate {
+  id         String @id @default(cuid())
+  code       String @unique // GROUP_BUY, BARGAIN
+  name       String
+  ruleSchema Json   @map("rule_schema") // 动态表单配置 { fields: [...] }
+  unitName   String @map("unit_name") // 单位: 节/小时/袋
+
+  uiComponentId String? @map("ui_component_id") // 前端组件映射
+
+  // 关联商品/规格 (可选)
+  productId   String? @map("product_id") // 关联的商品ID
+  skuId       String? @map("sku_id") // 关联的规格ID
+  productName String? @map("product_name") // 商品名称 (冗余字段，用于显示)
+
+  status     Status   @default(NORMAL)
+  delFlag    DelFlag  @default(NORMAL) @map("del_flag")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@map("mkt_play_template")
+}
+
+/// 玩法运行时定义 (开发维护)
+model PlayDefinition {
+  id               String             @id @default(cuid())
+  code             String             @unique @db.VarChar(50)
+  name             String             @db.VarChar(80)
+  hasInstance      Boolean            @default(false) @map("has_instance")
+  hasState         Boolean            @default(false) @map("has_state")
+  canFail          Boolean            @default(false) @map("can_fail")
+  canParallel      Boolean            @default(true) @map("can_parallel")
+  defaultStockMode MarketingStockMode @default(LAZY_CHECK) @map("default_stock_mode")
+  handlerClassName String             @map("handler_class_name") @db.VarChar(120)
+  description      String?            @db.VarChar(500)
+  isActive         Boolean            @default(true) @map("is_active")
+  createTime       DateTime           @default(now()) @map("create_time")
+  updateTime       DateTime           @updatedAt @map("update_time")
+
+  @@index([isActive])
+  @@map("play_definition")
+}
+
+/// 门店营销商品 (门店生产)
+model StorePlayConfig {
+  id       String @id @default(cuid())
+  tenantId String @default("000000") @map("tenant_id")
+
+  // 关联物理服务/商品
+  serviceId   String      @map("service_id")
+  serviceType ProductType @map("service_type")
+
+  // 关联模板
+  templateCode String @map("template_code")
+
+  // 营销规则配置
+  rules Json // { targetCount: 3, discountPrice: 99 }
+
+  // 规则历史版本（用于版本控制和回滚）
+  rulesHistory Json[] @default([]) @map("rules_history")
+
+  // 库存策略
+  stockMode MarketingStockMode @map("stock_mode")
+
+  // --- 裁决与展示控制 ---
+  scopeType        String  @default("PRODUCT") @map("scope_type")
+  aggregateEnabled Boolean @default(true) @map("aggregate_enabled")
+  zoneEnabled      Boolean @default(true) @map("zone_enabled")
+  displayPriority  Int     @default(0) @map("display_priority")
+
+  // --- 活动佣金配置 ---
+  commissionMode CommissionMode @default(INHERIT) @map("commission_mode")
+  commissionRate Decimal?       @map("commission_rate") @db.Decimal(5, 2)
+
+  status  PublishStatus @default(OFF_SHELF) // ONLINE, OFFLINE
+  delFlag DelFlag       @default(NORMAL) @map("del_flag")
+
+  createTime    DateTime             @default(now()) @map("create_time")
+  updateTime    DateTime             @updatedAt @map("update_time")
+  playInstances PlayInstance[]
+  targetSkus    StorePlayTargetSku[]
+
+  @@index([tenantId, serviceId, status, delFlag], map: "idx_mkt_store_config_tenant_service_status_del")
+  @@index([tenantId, aggregateEnabled, status, delFlag, serviceId], map: "idx_mkt_store_config_aggregate_scan")
+  @@index([status, delFlag, aggregateEnabled, serviceId], map: "idx_mkt_store_config_platform_aggregate")
+  @@map("mkt_store_config")
+}
+
+/// 门店玩法目标 SKU 绑定
+model StorePlayTargetSku {
+  id               String  @id @default(cuid())
+  configId         String  @map("config_id")
+  tenantSkuId      String  @map("tenant_sku_id")
+  globalSkuId      String  @map("global_sku_id")
+  sort             Int     @default(0)
+  isPrimaryDisplay Boolean @default(false) @map("is_primary_display")
+
+  config StorePlayConfig @relation(fields: [configId], references: [id])
+
+  @@index([configId])
+  @@map("mkt_store_play_target_sku")
+}
+
+/// 活动类型优先级规则
+model MktActivityPriorityRule {
+  id                String  @id @default(cuid())
+  tenantId          String  @map("tenant_id")
+  activityType      String  @map("activity_type")
+  priority          Int     @default(0)
+  aggregateEnabled  Boolean @default(true) @map("aggregate_enabled")
+  zoneEnabled       Boolean @default(true) @map("zone_enabled")
+  manualLockEnabled Boolean @default(false) @map("manual_lock_enabled")
+
+  @@unique([tenantId, activityType])
+  @@index([tenantId])
+  @@map("mkt_activity_priority_rule")
+}
+
+/// 营销裁决审计记录（仅在结算预览、下单、模拟器时写入）
+model MktResolutionAudit {
+  id                   String   @id @default(cuid())
+  tenantId             String   @map("tenant_id")
+  productId            String   @map("product_id")
+  memberId             String   @map("member_id")
+  scene                String
+  candidateSnapshot    Json     @map("candidate_snapshot")
+  filteredSnapshot     Json     @map("filtered_snapshot")
+  selectedActivityType String?  @map("selected_activity_type")
+  selectedConfigId     String?  @map("selected_config_id")
+  createTime           DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, productId])
+  @@index([memberId, createTime])
+  @@map("mkt_resolution_audit")
+}
+
+enum MktTraceKind {
+  SCENE_RESOLVE
+  CACHE_INVALIDATION
+}
+
+enum MktTraceStatus {
+  SUCCESS
+  FAILED
+}
+
+/// 场景出数 Trace 长期审计
+/// Redis 只承担短期指标和快速排障，本表保留可回看、可追责的 trace 事实。
+model MktSceneResolveTrace {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+
+  traceId   String       @map("trace_id") @db.VarChar(120)
+  traceKind MktTraceKind @map("trace_kind")
+
+  sceneCode String?        @map("scene_code") @db.VarChar(80)
+  releaseNo Int?           @map("release_no")
+  channel   String?        @db.VarChar(40)
+  status    MktTraceStatus @default(SUCCESS)
+
+  moduleCount      Int? @map("module_count")
+  emptyModuleCount Int? @map("empty_module_count")
+  durationMs       Int  @default(0) @map("duration_ms")
+
+  eventType   String? @map("event_type") @db.VarChar(120)
+  deletedKeys Int?    @map("deleted_keys")
+
+  snapshotJson Json?    @map("snapshot_json")
+  createTime   DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, traceId, createTime])
+  @@index([tenantId, sceneCode, createTime])
+  @@index([tenantId, traceKind, createTime])
+  @@map("mkt_scene_resolve_trace")
+}
+
+enum PlayInstanceStatus {
+  PENDING_PAY // 待支付
+  PAID // 已支付 (锁定名额)
+  ACTIVE // 生效中 (比如拼团正在进行)
+  SUCCESS // 成功 (达成条件/已核销)
+  TIMEOUT // 超时关闭
+  FAILED // 失败 (如拼团人数不足)
+  REFUNDED // 已退款
+}
+
+/// 营销玩法实例 (交易记录)
+model PlayInstance {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  memberId String @map("member_id")
+
+  // 关联配置
+  configId     String @map("config_id")
+  templateCode String @map("template_code")
+
+  config StorePlayConfig @relation(fields: [configId], references: [id])
+
+  order     OmsOrder?     @relation(fields: [orderId], references: [id])
+  orderItem OmsOrderItem? @relation("PlayInstanceToOrderItem", fields: [orderItemId], references: [id])
+
+  // 关联系统订单
+  orderSn     String? @map("order_sn")
+  orderId     String? @map("order_id")
+  orderItemId Int?    @unique @map("order_item_id")
+
+  // 实例特定的动态数据 (比如当前拼团进度)
+  instanceData Json @map("instance_data")
+
+  status PlayInstanceStatus @default(PENDING_PAY)
+
+  // 时间线
+  createTime      DateTime       @default(now()) @map("create_time")
+  payTime         DateTime?      @map("pay_time")
+  endTime         DateTime?      @map("end_time") // 成功或失败的最终时间
+  updateTime      DateTime       @updatedAt @map("update_time")
+  sysDistConfig   SysDistConfig? @relation(fields: [sysDistConfigId], references: [id])
+  sysDistConfigId Int?
+
+  // 扩展关联
+  courseGroupBuyExtension CourseGroupBuyExtension?
+  orderItems              OmsOrderItem[]           @relation("OrderItemToPlayInstance")
+
+  @@index([configId])
+  @@index([memberId])
+  @@index([orderId])
+  @@map("mkt_play_instance")
+}
+
+enum AssetStatus {
+  UNUSED
+  USED
+  EXPIRED
+  FROZEN
+}
+
+/// 用户营销资产 (核销券/权益)
+model MktUserAsset {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  memberId String @map("member_id")
+
+  // 来源推导
+  instanceId String @map("instance_id")
+  configId   String @map("config_id")
+
+  assetName String @map("asset_name")
+  assetType String @map("asset_type") // VOUCHER, TIMES_CARD
+
+  balance        Decimal @default(0) @db.Decimal(12, 2)
+  initialBalance Decimal @map("initial_balance") @db.Decimal(12, 2)
+
+  status AssetStatus @default(UNUSED)
+
+  expireTime DateTime? @map("expire_time")
+  createTime DateTime  @default(now()) @map("create_time")
+  updateTime DateTime  @updatedAt @map("update_time")
+
+  @@index([memberId, status])
+  @@index([instanceId])
+  @@map("mkt_user_asset")
+}
+
+// ============================================
+// 营销玩法扩展表
+// ============================================
+
+/// 课程拼团扩展表
+/// 用于存储课程拼团的详细信息，包括排课、考勤等
+model CourseGroupBuyExtension {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // 关联实例
+  instanceId String @unique @map("instance_id")
+  groupId    String @map("group_id") // 团ID（团长实例ID）
+
+  // 课程信息
+  totalLessons     Int       @map("total_lessons") // 总课时数
+  completedLessons Int       @default(0) @map("completed_lessons") // 已完成课时数
+  classAddress     String?   @map("class_address") // 上课地址
+  classStartTime   DateTime? @map("class_start_time") // 上课开始时间
+  classEndTime     DateTime? @map("class_end_time") // 上课结束时间
+
+  // 团长信息
+  leaderId       String  @map("leader_id") // 团长ID
+  leaderDiscount Decimal @default(0) @map("leader_discount") @db.Decimal(10, 2) // 团长优惠金额
+
+  // 状态
+  status     String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  delFlag    DelFlag  @default(NORMAL) @map("del_flag")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // 关联
+  instance    PlayInstance       @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  schedules   CourseSchedule[]
+  attendances CourseAttendance[]
+
+  @@index([groupId])
+  @@index([leaderId])
+  @@index([tenantId])
+  @@map("mkt_course_group_buy_ext")
+}
+
+/// 课程排课表
+/// 记录每节课的时间安排
+model CourseSchedule {
+  id          String @id @default(cuid())
+  tenantId    String @map("tenant_id")
+  extensionId String @map("extension_id")
+
+  // 排课信息
+  date      DateTime @db.Date // 上课日期
+  startTime String   @map("start_time") // 开始时间 "09:00"
+  endTime   String   @map("end_time") // 结束时间 "11:00"
+  lessons   Int // 课时数
+
+  // 履约资源快照
+  teacherId        String? @map("teacher_id") @db.VarChar(64)
+  teacherName      String? @map("teacher_name") @db.VarChar(100)
+  classroomId      String? @map("classroom_id") @db.VarChar(64)
+  classroomName    String? @map("classroom_name") @db.VarChar(100)
+  location         String? @db.VarChar(255)
+  capacity         Int?
+  serviceCapacity  Int?    @map("service_capacity")
+  resourceSnapshot Json?   @map("resource_snapshot")
+
+  // 状态
+  status     String   @default("SCHEDULED") @map("status") // SCHEDULED, COMPLETED, CANCELLED
+  remark     String?  @db.Text // 备注
+  delFlag    DelFlag  @default(NORMAL) @map("del_flag")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // 关联
+  extension CourseGroupBuyExtension @relation(fields: [extensionId], references: [id], onDelete: Cascade)
+
+  @@index([extensionId, date])
+  @@index([tenantId])
+  @@index([tenantId, teacherId, date])
+  @@index([tenantId, classroomId, date])
+  @@map("mkt_course_schedule")
+}
+
+/// 课程考勤表
+/// 记录学员的出勤情况
+model CourseAttendance {
+  id          String  @id @default(cuid())
+  tenantId    String  @map("tenant_id")
+  extensionId String  @map("extension_id")
+  scheduleId  String? @map("schedule_id") // 关联排课（可选）
+
+  // 考勤信息
+  memberId String   @map("member_id") // 学员ID
+  date     DateTime @db.Date // 考勤日期
+  attended Boolean  @default(false) // 是否出勤
+  remark   String?  @db.Text // 备注
+
+  // 状态
+  delFlag    DelFlag  @default(NORMAL) @map("del_flag")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // 关联
+  extension CourseGroupBuyExtension @relation(fields: [extensionId], references: [id], onDelete: Cascade)
+
+  @@unique([extensionId, memberId, date])
+  @@index([memberId])
+  @@index([tenantId])
+  @@map("mkt_course_attendance")
+}
+
+// ==========================================
+// 📌 优惠券和积分系统
+// ==========================================
+
+/// 优惠券类型枚举
+enum CouponType {
+  DISCOUNT // 满减券
+  PERCENTAGE // 折扣券
+  EXCHANGE // 兑换券
+}
+
+/// 优惠券状态枚举
+enum CouponStatus {
+  ACTIVE // 启用中
+  INACTIVE // 已停用
+  EXPIRED // 已过期
+}
+
+/// 用户优惠券状态枚举
+enum UserCouponStatus {
+  UNUSED // 未使用
+  LOCKED // 已锁定（订单创建时）
+  USED // 已使用
+  EXPIRED // 已过期
+  CANCELLED // 已取消
+}
+
+/// 优惠券有效期类型枚举
+enum CouponValidityType {
+  FIXED // 固定时间段
+  RELATIVE // 相对时间（领取后N天）
+}
+
+/// 优惠券发放方式枚举
+enum CouponDistributionType {
+  MANUAL // 手动发放
+  AUTO // 自动发放
+  ACTIVITY // 活动发放
+  ORDER // 订单赠送
+}
+
+/// 积分交易类型枚举
+enum PointsTransactionType {
+  EARN_ORDER // 消费获得
+  EARN_SIGNIN // 签到获得
+  EARN_TASK // 任务获得
+  EARN_ADMIN // 管理员调整（增加）
+  USE_ORDER // 订单抵扣
+  USE_COUPON // 兑换优惠券
+  USE_PRODUCT // 兑换商品
+  FREEZE // 冻结
+  UNFREEZE // 解冻
+  EXPIRE // 过期扣减
+  REFUND // 退款返还
+  DEDUCT_ADMIN // 管理员调整（扣减）
+}
+
+/// 积分交易状态枚举
+enum PointsTransactionStatus {
+  PENDING // 待处理
+  COMPLETED // 已完成
+  CANCELLED // 已取消
+}
+
+/// 积分批次状态枚举
+enum PointsLotStatus {
+  ACTIVE // 可用
+  EXHAUSTED // 已消耗完
+  EXPIRED // 已过期
+  CANCELLED // 已取消
+}
+
+/// 积分冻结分摊状态枚举
+enum PointsFreezeAllocationStatus {
+  ACTIVE // 冻结中
+  RELEASED // 已解冻
+  CONSUMED // 已转为消费
+  CANCELLED // 已取消
+}
+
+/// 积分消费分摊状态枚举
+enum PointsConsumeAllocationStatus {
+  ACTIVE // 可退款
+  REFUNDED // 已全部退款
+  CANCELLED // 已取消
+}
+
+/// 积分退款分摊策略枚举
+enum PointsRefundAllocationStrategy {
+  ORIGINAL_LOT_RESTORE // 原批次恢复
+  EXPIRED_LOT_COMPENSATION // 原批次已过期，补偿新批次
+  NEW_REFUND_TRANSACTION // 缺少消费分摊，新增退款批次
+  MANUAL_REVIEW // 人工复核
+}
+
+/// 积分欠账状态
+enum PointsDebtStatus {
+  OPEN // 待处理
+  PARTIAL // 已部分扣回
+  RESOLVED // 已结清
+  CANCELLED // 已取消
+}
+
+/// 积分欠账原因
+enum PointsDebtReason {
+  ORDER_REFUND_CLAWBACK_INSUFFICIENT // 订单退款扣回赠送积分时余额不足
+}
+
+/// 优惠券模板表
+model MktCouponTemplate {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+
+  // 基础信息
+  name        String     @db.VarChar(100)
+  description String?    @db.VarChar(500)
+  type        CouponType
+
+  // 优惠金额配置
+  discountAmount    Decimal? @map("discount_amount") @db.Decimal(10, 2) // 满减金额
+  discountPercent   Int?     @map("discount_percent") // 折扣百分比(1-99)
+  maxDiscountAmount Decimal? @map("max_discount_amount") @db.Decimal(10, 2) // 最高优惠金额
+
+  // 使用条件
+  minOrderAmount       Decimal  @default(0) @map("min_order_amount") @db.Decimal(10, 2) // 最低消费金额
+  minActualPayAmount   Decimal? @map("min_actual_pay_amount") @db.Decimal(10, 2) // 最低实付金额（使用优惠券后）
+  applicableProducts   String[] @map("applicable_products") // 适用商品ID列表
+  applicableCategories Int[]    @map("applicable_categories") // 适用分类ID列表
+  memberLevels         Int[]    @map("member_levels") // 适用会员等级
+
+  // 兑换券专属
+  exchangeProductId String? @map("exchange_product_id") // 可兑换的商品ID
+  exchangeSkuId     String? @map("exchange_sku_id") // 可兑换的SKU ID
+
+  // 有效期配置
+  validityType CouponValidityType @map("validity_type")
+  startTime    DateTime?          @map("start_time") // 固定时间段-开始时间
+  endTime      DateTime?          @map("end_time") // 固定时间段-结束时间
+  validDays    Int?               @map("valid_days") // 相对时间-有效天数
+
+  // 发放配置
+  totalStock     Int @map("total_stock") // 发放总量
+  remainingStock Int @map("remaining_stock") // 剩余库存
+  limitPerUser   Int @default(1) @map("limit_per_user") // 每人限领数量
+
+  // 状态
+  status CouponStatus @default(ACTIVE)
+
+  // 退款补偿配置（业务决策 B3）
+  /// 退款时若用户券已过 endTime，自动延长该天数让用户继续使用；
+  /// 模板已下架/停用时降级走 MktCouponRefundCompensation 表
+  refundExpireExtendDays Int @default(7) @map("refund_expire_extend_days")
+
+  // 审计字段
+  createBy   String   @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String?  @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // 关联
+  userCoupons         MktUserCoupon[]
+  refundCompensations MktCouponRefundCompensation[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@map("mkt_coupon_template")
+}
+
+/// 退款补偿状态枚举（业务决策 B3 模板下架降级 B2）
+enum CouponRefundCompensationStatus {
+  PENDING // 待运营处理
+  RESOLVED // 已处理
+  CANCELLED // 已取消
+}
+
+/// 优惠券退款补偿记录表（业务决策 B3 降级 B2）
+/// 当用户已使用券退款、但券已过期且原模板已下架时，
+/// 无法自动延期，写入此表由运营手工处理（如发放等值券、退现金等）。
+model MktCouponRefundCompensation {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id") @db.VarChar(20)
+  memberId     String @map("member_id")
+  userCouponId String @map("user_coupon_id")
+  templateId   String @map("template_id")
+  orderId      String @map("order_id")
+
+  /// 触发补偿时该券的快照过期时间
+  originalEndTime DateTime @map("original_end_time")
+  /// 补偿原因摘要：'TEMPLATE_INACTIVE' 等
+  reason          String   @db.VarChar(100)
+
+  status        CouponRefundCompensationStatus @default(PENDING)
+  resolvedBy    String?                        @map("resolved_by") @db.VarChar(64)
+  resolvedTime  DateTime?                      @map("resolved_time")
+  resolveRemark String?                        @map("resolve_remark") @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  template MktCouponTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([userCouponId, orderId], map: "uk_mkt_coupon_refund_comp_user_coupon_order")
+  @@index([tenantId, status])
+  @@index([tenantId, memberId])
+  @@map("mkt_coupon_refund_compensation")
+}
+
+/// 用户优惠券表
+model MktUserCoupon {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id") @db.VarChar(20)
+  memberId   String @map("member_id")
+  templateId String @map("template_id")
+
+  // 优惠券信息快照（防止模板修改影响已发放的券）
+  couponName        String     @map("coupon_name") @db.VarChar(100)
+  couponType        CouponType @map("coupon_type")
+  discountAmount    Decimal?   @map("discount_amount") @db.Decimal(10, 2)
+  discountPercent   Int?       @map("discount_percent")
+  maxDiscountAmount Decimal?   @map("max_discount_amount") @db.Decimal(10, 2)
+  minOrderAmount    Decimal    @map("min_order_amount") @db.Decimal(10, 2)
+
+  // 有效期
+  startTime DateTime @map("start_time")
+  endTime   DateTime @map("end_time")
+
+  // 状态
+  status UserCouponStatus @default(UNUSED)
+
+  // 发放信息
+  distributionType   CouponDistributionType @map("distribution_type")
+  distributionSource String?                @map("distribution_source") @db.VarChar(100) // 发放来源描述
+  perUserOrd         Int                    @map("per_user_ord") // 同用户同模板领取序号，用于数据库层限领竞争兜底
+
+  // 使用信息
+  usedTime DateTime? @map("used_time")
+  orderId  String?   @map("order_id")
+
+  // 审计字段
+  receiveTime DateTime @default(now()) @map("receive_time")
+
+  // 关联
+  template     MktCouponTemplate @relation(fields: [templateId], references: [id])
+  usageRecords MktCouponUsage[]
+
+  @@unique([memberId, templateId, perUserOrd], map: "uk_user_coupon_per_user_ord")
+  @@index([tenantId, memberId, status])
+  @@index([templateId])
+  @@index([orderId])
+  @@map("mkt_user_coupon")
+}
+
+/// 优惠券使用记录表
+model MktCouponUsage {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id") @db.VarChar(20)
+  userCouponId String @map("user_coupon_id")
+  memberId     String @map("member_id")
+  orderId      String @map("order_id")
+
+  // 使用信息
+  discountAmount Decimal @map("discount_amount") @db.Decimal(10, 2)
+  orderAmount    Decimal @map("order_amount") @db.Decimal(10, 2)
+
+  // 审计字段
+  usedTime DateTime @default(now()) @map("used_time")
+
+  // 关联
+  userCoupon MktUserCoupon @relation(fields: [userCouponId], references: [id])
+
+  @@unique([userCouponId, orderId], map: "uk_mkt_coupon_usage_user_coupon_order")
+  @@index([tenantId, memberId])
+  @@index([orderId])
+  @@index([userCouponId])
+  @@map("mkt_coupon_usage")
+}
+
+/// 积分规则配置表
+model MktPointsRule {
+  id       String @id @default(uuid())
+  tenantId String @unique @map("tenant_id") @db.VarChar(20)
+
+  // 消费积分规则
+  orderPointsEnabled Boolean @default(true) @map("order_points_enabled")
+  orderPointsRatio   Decimal @default(1) @map("order_points_ratio") @db.Decimal(10, 2) // 每消费N元获得M积分
+  orderPointsBase    Decimal @default(1) @map("order_points_base") @db.Decimal(10, 2) // N元
+
+  // 签到积分规则
+  signinPointsEnabled Boolean @default(true) @map("signin_points_enabled")
+  signinPointsAmount  Int     @default(10) @map("signin_points_amount")
+
+  // 积分有效期
+  pointsValidityEnabled Boolean @default(false) @map("points_validity_enabled")
+  pointsValidityDays    Int?    @map("points_validity_days") // 积分有效天数，null表示永久有效
+
+  // 积分抵扣规则
+  pointsRedemptionEnabled Boolean @default(true) @map("points_redemption_enabled")
+  pointsRedemptionRatio   Decimal @default(100) @map("points_redemption_ratio") @db.Decimal(10, 2) // 每N积分可抵扣M元
+  pointsRedemptionBase    Decimal @default(1) @map("points_redemption_base") @db.Decimal(10, 2) // M元
+
+  // 积分抵扣限制
+  maxPointsPerOrder       Int? @map("max_points_per_order") // 单笔订单最多可使用积分数量
+  maxDiscountPercentOrder Int? @map("max_discount_percent_order") // 单笔订单最多可抵扣百分比(1-100)
+
+  // 系统开关
+  systemEnabled Boolean @default(true) @map("system_enabled")
+
+  // 审计字段
+  createBy   String   @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String?  @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@map("mkt_points_rule")
+}
+
+/// 积分账户表
+model MktPointsAccount {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+  memberId String @map("member_id")
+
+  // 积分余额
+  totalPoints     Int @default(0) @map("total_points") // 总积分（累计获得）
+  availablePoints Int @default(0) @map("available_points") // 可用积分
+  frozenPoints    Int @default(0) @map("frozen_points") // 冻结积分
+  usedPoints      Int @default(0) @map("used_points") // 已使用积分
+  expiredPoints   Int @default(0) @map("expired_points") // 已过期积分
+
+  // 乐观锁
+  version Int @default(0)
+
+  // 审计字段
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  // 关联
+  transactions       MktPointsTransaction[]
+  lots               MktPointsLot[]
+  freezeAllocations  MktPointsFreezeAllocation[]
+  consumeAllocations MktPointsConsumeAllocation[]
+  refundAllocations  MktPointsRefundAllocation[]
+
+  @@unique([tenantId, memberId])
+  @@index([tenantId, availablePoints])
+  @@map("mkt_points_account")
+}
+
+/// 积分交易记录表
+model MktPointsTransaction {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id") @db.VarChar(20)
+  accountId String @map("account_id")
+  memberId  String @map("member_id")
+
+  // 交易信息
+  type          PointsTransactionType
+  amount        Int // 积分变动数量（正数为增加，负数为减少）
+  balanceBefore Int                   @map("balance_before") // 交易前余额
+  balanceAfter  Int                   @map("balance_after") // 交易后余额
+
+  // 关联信息
+  relatedId   String? @map("related_id") // 关联业务ID（订单ID、任务ID等）
+  relatedType String? @map("related_type") @db.VarChar(50) // 关联业务类型
+
+  // 有效期（用于过期扣减）
+  expireTime DateTime? @map("expire_time")
+
+  // 状态
+  status PointsTransactionStatus @default(COMPLETED)
+
+  // 备注
+  remark String? @db.VarChar(500)
+
+  // 审计字段
+  createTime DateTime @default(now()) @map("create_time")
+
+  // 关联
+  account                       MktPointsAccount             @relation(fields: [accountId], references: [id])
+  sourceLots                    MktPointsLot[]               @relation("PointsLotSourceTransaction")
+  freezeAllocations             MktPointsFreezeAllocation[]  @relation("PointsFreezeTransaction")
+  releaseFreezeAllocations      MktPointsFreezeAllocation[]  @relation("PointsReleaseFreezeTransaction")
+  consumeAllocations            MktPointsConsumeAllocation[] @relation("PointsSpendTransaction")
+  refundTransactions            MktPointsRefundAllocation[]  @relation("PointsRefundTransaction")
+  refundSourceSpendTransactions MktPointsRefundAllocation[]  @relation("PointsRefundSourceSpendTransaction")
+  sourceDebts                   MktPointsDebt[]              @relation("PointsDebtSourceTransaction")
+
+  @@index([tenantId, memberId, createTime])
+  @@index([accountId, type])
+  @@index([relatedId])
+  @@index([expireTime])
+  @@map("mkt_points_transaction")
+}
+
+/// 积分批次表
+model MktPointsLot {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id") @db.VarChar(20)
+  accountId String @map("account_id")
+  memberId  String @map("member_id")
+
+  // 来源交易：历史迁移批次允许为空
+  sourceTransactionId String?                @map("source_transaction_id")
+  sourceType          PointsTransactionType? @map("source_type")
+
+  // 批次数量
+  totalAmount     Int @map("total_amount")
+  availableAmount Int @default(0) @map("available_amount")
+  frozenAmount    Int @default(0) @map("frozen_amount")
+  consumedAmount  Int @default(0) @map("consumed_amount")
+  expiredAmount   Int @default(0) @map("expired_amount")
+
+  expireTime DateTime?       @map("expire_time")
+  status     PointsLotStatus @default(ACTIVE)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  account                 MktPointsAccount             @relation(fields: [accountId], references: [id])
+  sourceTransaction       MktPointsTransaction?        @relation("PointsLotSourceTransaction", fields: [sourceTransactionId], references: [id])
+  freezeAllocations       MktPointsFreezeAllocation[]
+  consumeAllocations      MktPointsConsumeAllocation[]
+  refundSourceAllocations MktPointsRefundAllocation[]  @relation("PointsRefundSourceLot")
+  refundTargetAllocations MktPointsRefundAllocation[]  @relation("PointsRefundTargetLot")
+
+  @@index([tenantId, memberId, expireTime])
+  @@index([accountId, status, expireTime])
+  @@index([sourceTransactionId])
+  @@map("mkt_points_lot")
+}
+
+/// 积分冻结分摊表
+model MktPointsFreezeAllocation {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id") @db.VarChar(20)
+  accountId String @map("account_id")
+  memberId  String @map("member_id")
+
+  freezeTransactionId  String  @map("freeze_transaction_id")
+  releaseTransactionId String? @map("release_transaction_id")
+  lotId                String  @map("lot_id")
+  relatedId            String? @map("related_id")
+
+  amount Int
+  status PointsFreezeAllocationStatus @default(ACTIVE)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  account            MktPointsAccount             @relation(fields: [accountId], references: [id])
+  lot                MktPointsLot                 @relation(fields: [lotId], references: [id])
+  freezeTransaction  MktPointsTransaction         @relation("PointsFreezeTransaction", fields: [freezeTransactionId], references: [id])
+  releaseTransaction MktPointsTransaction?        @relation("PointsReleaseFreezeTransaction", fields: [releaseTransactionId], references: [id])
+  consumeAllocations MktPointsConsumeAllocation[]
+
+  @@unique([freezeTransactionId, lotId])
+  @@index([tenantId, memberId, relatedId])
+  @@index([lotId, status])
+  @@map("mkt_points_freeze_allocation")
+}
+
+/// 积分消费分摊表
+model MktPointsConsumeAllocation {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id") @db.VarChar(20)
+  accountId String @map("account_id")
+  memberId  String @map("member_id")
+
+  spendTransactionId       String  @map("spend_transaction_id")
+  sourceFreezeAllocationId String? @map("source_freeze_allocation_id")
+  lotId                    String  @map("lot_id")
+  relatedId                String? @map("related_id")
+
+  amount           Int
+  refundableAmount Int                           @map("refundable_amount")
+  status           PointsConsumeAllocationStatus @default(ACTIVE)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  account                MktPointsAccount            @relation(fields: [accountId], references: [id])
+  lot                    MktPointsLot                @relation(fields: [lotId], references: [id])
+  spendTransaction       MktPointsTransaction        @relation("PointsSpendTransaction", fields: [spendTransactionId], references: [id])
+  sourceFreezeAllocation MktPointsFreezeAllocation?  @relation(fields: [sourceFreezeAllocationId], references: [id])
+  refundAllocations      MktPointsRefundAllocation[]
+
+  @@index([tenantId, memberId, relatedId])
+  @@index([spendTransactionId])
+  @@index([lotId, status])
+  @@map("mkt_points_consume_allocation")
+}
+
+/// 积分退款分摊表
+model MktPointsRefundAllocation {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id") @db.VarChar(20)
+  accountId String @map("account_id")
+  memberId  String @map("member_id")
+
+  refundTransactionId       String  @map("refund_transaction_id")
+  sourceSpendTransactionId  String? @map("source_spend_transaction_id")
+  sourceConsumeAllocationId String? @map("source_consume_allocation_id")
+  sourceLotId               String? @map("source_lot_id")
+  targetLotId               String? @map("target_lot_id")
+  relatedId                 String? @map("related_id")
+
+  amount   Int
+  strategy PointsRefundAllocationStrategy
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  account                 MktPointsAccount            @relation(fields: [accountId], references: [id])
+  refundTransaction       MktPointsTransaction        @relation("PointsRefundTransaction", fields: [refundTransactionId], references: [id])
+  sourceSpendTransaction  MktPointsTransaction?       @relation("PointsRefundSourceSpendTransaction", fields: [sourceSpendTransactionId], references: [id])
+  sourceConsumeAllocation MktPointsConsumeAllocation? @relation(fields: [sourceConsumeAllocationId], references: [id])
+  sourceLot               MktPointsLot?               @relation("PointsRefundSourceLot", fields: [sourceLotId], references: [id])
+  targetLot               MktPointsLot?               @relation("PointsRefundTargetLot", fields: [targetLotId], references: [id])
+
+  @@index([tenantId, memberId, relatedId])
+  @@index([refundTransactionId])
+  @@index([sourceSpendTransactionId])
+  @@index([sourceLotId])
+  @@map("mkt_points_refund_allocation")
+}
+
+/// 积分欠账/风险记录
+/// 用于记录退款扣回消费赠送积分时，账户余额不足导致的待补账事实。
+model MktPointsDebt {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+
+  accountId String? @map("account_id")
+  memberId  String  @map("member_id")
+
+  sourceTransactionId String? @map("source_transaction_id")
+  relatedId           String? @map("related_id")
+  relatedType         String? @map("related_type") @db.VarChar(50)
+
+  reason PointsDebtReason
+  status PointsDebtStatus @default(OPEN)
+
+  expectedAmount    Int @map("expected_amount")
+  deductedAmount    Int @default(0) @map("deducted_amount")
+  debtAmount        Int @map("debt_amount")
+  availableAtCreate Int @default(0) @map("available_at_create")
+
+  remark     String?  @db.VarChar(500)
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  sourceTransaction MktPointsTransaction? @relation("PointsDebtSourceTransaction", fields: [sourceTransactionId], references: [id])
+
+  @@unique([tenantId, memberId, relatedId, reason], map: "uk_mkt_points_debt_biz")
+  @@index([tenantId, memberId, status])
+  @@index([relatedId])
+  @@index([sourceTransactionId])
+  @@map("mkt_points_debt")
+}
+
+/// 积分任务配置表
+model MktPointsTask {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+
+  // 任务信息
+  taskKey         String  @map("task_key") @db.VarChar(50) // 任务唯一标识（如：COMPLETE_PROFILE）
+  taskName        String  @map("task_name") @db.VarChar(100)
+  taskDescription String? @map("task_description") @db.VarChar(500)
+
+  // 积分奖励
+  pointsReward Int @map("points_reward")
+
+  // 完成条件
+  completionCondition Json @map("completion_condition") // 完成条件配置（JSON格式）
+
+  // 限制
+  isRepeatable   Boolean @default(false) @map("is_repeatable") // 是否可重复完成
+  maxCompletions Int?    @map("max_completions") // 最多完成次数
+
+  // 状态
+  isEnabled Boolean @default(true) @map("is_enabled")
+
+  // 审计字段
+  createBy   String   @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String?  @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, taskKey])
+  @@index([tenantId, isEnabled])
+  @@map("mkt_points_task")
+}
+
+/// 用户任务完成记录表
+model MktUserTaskCompletion {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+  memberId String @map("member_id")
+  taskId   String @map("task_id")
+
+  // 完成信息
+  completionTime DateTime @default(now()) @map("completion_time")
+  pointsAwarded  Int      @map("points_awarded")
+  transactionId  String   @map("transaction_id") // 关联的积分交易记录ID
+
+  @@index([tenantId, memberId, taskId])
+  @@map("mkt_user_task_completion")
+}
+
+/// 积分发放失败记录表
+model MktPointsGrantFailure {
+  id       String @id @default(uuid())
+  memberId String @map("member_id")
+
+  // 积分信息
+  amount     Int                   @map("amount")
+  type       PointsTransactionType @map("type")
+  relatedId  String?               @map("related_id")
+  remark     String?               @db.VarChar(500)
+  expireTime DateTime?             @map("expire_time")
+
+  // 失败信息
+  failureReason    String    @map("failure_reason") @db.VarChar(500)
+  failureTime      DateTime  @map("failure_time")
+  retryCount       Int       @default(0) @map("retry_count")
+  lastRetryTime    DateTime? @map("last_retry_time")
+  lastErrorMessage String?   @map("last_error_message") @db.VarChar(1000)
+
+  // 状态: PENDING-待重试, COMPLETED-已完成, FAILED-最终失败
+  status String @default("PENDING") @db.VarChar(20)
+
+  // 审计字段
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@index([memberId, status])
+  @@index([relatedId])
+  @@index([failureTime])
+  @@map("mkt_points_grant_failure")
+}
+
+enum MktTouchpointKind {
+  MESSAGE
+  SHARE
+}
+
+enum MktCampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum MktCampaignKind {
+  POLICY
+  HANDLER
+}
+
+enum MktCampaignReleaseStatus {
+  PENDING
+  PUBLISHED
+  ROLLED_BACK
+  ARCHIVED
+}
+
+enum MktEntitlementPoolType {
+  PRODUCT
+  COUPON
+  POINTS
+}
+
+enum MktEntitlementPoolStatus {
+  DRAFT
+  COMPILED
+  FAILED
+}
+
+model MktCampaign {
+  id              String            @id @default(cuid())
+  tenantId        String            @map("tenant_id") @db.VarChar(20)
+  name            String            @db.VarChar(120)
+  type            String            @db.VarChar(50)
+  kind            MktCampaignKind   @default(POLICY)
+  description     String?           @db.VarChar(500)
+  status          MktCampaignStatus @default(DRAFT)
+  startTime       DateTime?         @map("start_time")
+  endTime         DateTime?         @map("end_time")
+  priority        Int               @default(0)
+  policyJson      Json?             @map("policy_json")
+  foundationJson  Json?             @map("foundation_json")
+  audienceJson    Json?             @map("audience_json")
+  rightsJson      Json?             @map("rights_json")
+  stagesJson      Json?             @map("stages_json")
+  deliveryJson    Json?             @map("delivery_json")
+  constraintsJson Json?             @map("constraints_json")
+  ownerUserId     String?           @map("owner_user_id") @db.VarChar(64)
+  version         Int               @default(1)
+  createdBy       String?           @map("created_by") @db.VarChar(64)
+  updatedBy       String?           @map("updated_by") @db.VarChar(64)
+  createTime      DateTime          @default(now()) @map("create_time")
+  updateTime      DateTime          @updatedAt @map("update_time")
+
+  releases         MktCampaignRelease[]
+  entitlementPools MktCampaignEntitlementPool[]
+  participations   MktCampaignParticipation[]
+  touchpoints      MktCampaignTouchpoint[]
+
+  @@index([tenantId, type, status])
+  @@index([tenantId, status, startTime, endTime])
+  @@index([tenantId, updateTime])
+  @@map("mkt_campaign")
+}
+
+model MktCampaignRelease {
+  id                  String                   @id @default(cuid())
+  tenantId            String                   @map("tenant_id") @db.VarChar(20)
+  campaignId          String                   @map("campaign_id")
+  releaseNo           Int                      @default(1) @map("release_no")
+  status              MktCampaignReleaseStatus @default(PENDING)
+  snapshotJson        Json                     @map("snapshot_json")
+  entitlementSnapshot Json?                    @map("entitlement_snapshot")
+  publishedAt         DateTime?                @map("published_at")
+  createdBy           String?                  @map("created_by") @db.VarChar(64)
+  updatedBy           String?                  @map("updated_by") @db.VarChar(64)
+  createTime          DateTime                 @default(now()) @map("create_time")
+  updateTime          DateTime                 @updatedAt @map("update_time")
+
+  campaign MktCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, campaignId, releaseNo])
+  @@index([tenantId, status])
+  @@map("mkt_campaign_release")
+}
+
+model MktEntitlementPool {
+  id                   String                   @id @default(cuid())
+  tenantId             String                   @map("tenant_id") @db.VarChar(20)
+  name                 String                   @db.VarChar(120)
+  poolType             MktEntitlementPoolType   @map("pool_type")
+  status               MktEntitlementPoolStatus @default(DRAFT)
+  owner                String?                  @db.VarChar(128)
+  touchpoints          Json                     @default("[]")
+  sourceType           String?                  @map("source_type") @db.VarChar(30)
+  sourceKey            String?                  @map("source_key") @db.VarChar(120)
+  memberId             String?                  @map("member_id") @db.VarChar(64)
+  templateId           String?                  @map("template_id") @db.VarChar(64)
+  templateName         String?                  @map("template_name") @db.VarChar(120)
+  taskId               String?                  @map("task_id") @db.VarChar(64)
+  taskName             String?                  @map("task_name") @db.VarChar(120)
+  compilePreviewJson   Json?                    @map("compile_preview_json")
+  riskSummaryJson      Json?                    @map("risk_summary_json")
+  compileArtifactsJson Json?                    @map("compile_artifacts_json")
+  lastCompiledAt       DateTime?                @map("last_compiled_at")
+  createdBy            String?                  @map("created_by") @db.VarChar(64)
+  updatedBy            String?                  @map("updated_by") @db.VarChar(64)
+  createTime           DateTime                 @default(now()) @map("create_time")
+  updateTime           DateTime                 @updatedAt @map("update_time")
+
+  campaignRelations MktCampaignEntitlementPool[]
+
+  @@index([tenantId, poolType])
+  @@index([tenantId, status])
+  @@index([tenantId, updateTime])
+  @@map("mkt_entitlement_pool")
+}
+
+model MktCampaignEntitlementPool {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id") @db.VarChar(20)
+  campaignId String   @map("campaign_id")
+  poolId     String   @map("pool_id")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  campaign MktCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  pool     MktEntitlementPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, campaignId, poolId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, poolId])
+  @@map("mkt_campaign_entitlement_pool")
+}
+
+model MktCampaignTouchpoint {
+  id         String            @id @default(cuid())
+  tenantId   String            @map("tenant_id") @db.VarChar(20)
+  campaignId String            @map("campaign_id")
+  kind       MktTouchpointKind @map("kind")
+  code       String            @db.VarChar(60)
+  name       String            @db.VarChar(100)
+  config     Json
+  isEnabled  Boolean           @default(true) @map("is_enabled")
+  createTime DateTime          @default(now()) @map("create_time")
+  updateTime DateTime          @updatedAt @map("update_time")
+
+  campaign MktCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, campaignId, kind, code])
+  @@index([tenantId, campaignId, kind])
+  @@map("mkt_campaign_touchpoint")
+}
+
+model MktCampaignParticipation {
+  id         String @id @default(cuid())
+  tenantId   String @map("tenant_id") @db.VarChar(20)
+  campaignId String @map("campaign_id")
+  memberId   String @map("member_id")
+
+  rewardsSnapshot Json? @map("rewards_snapshot")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  campaign MktCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, memberId])
+  @@index([tenantId, memberId])
+  @@map("mkt_campaign_participation")
+}
+
+model MktSceneTemplate {
+  id                        String                   @id @default(cuid())
+  templateCode              String                   @unique @map("template_code") @db.VarChar(60)
+  templateName              String                   @map("template_name") @db.VarChar(120)
+  sceneType                 String                   @map("scene_type") @db.VarChar(40)
+  channelScope              Json                     @map("channel_scope")
+  pageRoute                 String?                  @map("page_route")
+  defaultCardTemplateCode   String?                  @map("default_card_template_code")
+  defaultResolverPolicyCode String?                  @map("default_resolver_policy_code")
+  placementConfig           Json?                    @map("placement_config")
+  description               String?                  @db.VarChar(500)
+  isActive                  Boolean                  @default(true) @map("is_active")
+  createTime                DateTime                 @default(now()) @map("create_time")
+  updateTime                DateTime                 @updatedAt @map("update_time")
+  modules                   MktSceneTemplateModule[]
+  scenes                    MktScene[]
+
+  @@index([isActive])
+  @@map("mkt_scene_template")
+}
+
+model MktSceneTemplateModule {
+  id                    String           @id @default(cuid())
+  templateCode          String           @map("template_code") @db.VarChar(60)
+  moduleSlot            String           @map("module_slot") @db.VarChar(60)
+  moduleName            String           @map("module_name")
+  moduleType            String           @map("module_type")
+  title                 String?          @map("title")
+  subTitle              String?          @map("sub_title")
+  displayOrder          Int              @default(0) @map("display_order")
+  limitSize             Int              @default(20) @map("limit_size")
+  sourcePolicyCode      String           @map("source_policy_code")
+  resolverPolicyCode    String           @map("resolver_policy_code")
+  sortPolicyCode        String?          @map("sort_policy_code")
+  audiencePolicyCode    String?          @map("audience_policy_code")
+  cardTemplateCode      String           @map("card_template_code")
+  attributionPolicyCode String?          @map("attribution_policy_code")
+  uiConfig              Json?            @map("ui_config")
+  template              MktSceneTemplate @relation(fields: [templateCode], references: [templateCode], onDelete: Cascade)
+
+  @@unique([templateCode, moduleSlot])
+  @@map("mkt_scene_template_module")
+}
+
+model MktScene {
+  id                        String            @id @default(cuid())
+  tenantId                  String            @map("tenant_id") @db.VarChar(20)
+  sceneCode                 String            @map("scene_code")
+  sceneName                 String            @map("scene_name")
+  sceneType                 String            @map("scene_type")
+  channelScope              Json              @map("channel_scope")
+  pageRoute                 String?           @map("page_route")
+  defaultCardTemplateCode   String?           @map("default_card_template_code")
+  defaultResolverPolicyCode String?           @map("default_resolver_policy_code")
+  /// 场景投放展示配置：activityTypeFilter / storeMatchMode / sortMode 等（与 admin 场景定义页对齐）
+  placementConfig           Json?             @map("placement_config")
+  templateCode              String?           @map("template_code") @db.VarChar(60)
+  templateOverrides         Json?             @map("template_overrides")
+  status                    String
+  startAt                   DateTime?         @map("start_at")
+  endAt                     DateTime?         @map("end_at")
+  createTime                DateTime          @default(now()) @map("create_time")
+  updateTime                DateTime          @updatedAt @map("update_time")
+  modules                   MktSceneModule[]
+  releases                  MktSceneRelease[]
+  template                  MktSceneTemplate? @relation(fields: [templateCode], references: [templateCode])
+
+  @@unique([tenantId, sceneCode])
+  @@index([tenantId, status])
+  @@index([templateCode])
+  @@map("mkt_scene")
+}
+
+model MktSceneModule {
+  id                    String    @id @default(cuid())
+  tenantId              String    @map("tenant_id") @db.VarChar(20)
+  sceneCode             String    @map("scene_code")
+  moduleCode            String    @map("module_code")
+  moduleName            String    @map("module_name")
+  moduleType            String    @map("module_type")
+  title                 String?   @map("title")
+  subTitle              String?   @map("sub_title")
+  displayOrder          Int       @default(0) @map("display_order")
+  limitSize             Int       @default(20) @map("limit_size")
+  sourcePolicyCode      String    @map("source_policy_code")
+  resolverPolicyCode    String    @map("resolver_policy_code")
+  sortPolicyCode        String?   @map("sort_policy_code")
+  audiencePolicyCode    String?   @map("audience_policy_code")
+  cardTemplateCode      String    @map("card_template_code")
+  attributionPolicyCode String?   @map("attribution_policy_code")
+  uiConfig              Json?     @map("ui_config")
+  status                String
+  startAt               DateTime? @map("start_at")
+  endAt                 DateTime? @map("end_at")
+  createTime            DateTime  @default(now()) @map("create_time")
+  updateTime            DateTime  @updatedAt @map("update_time")
+  scene                 MktScene  @relation(fields: [sceneCode, tenantId], references: [sceneCode, tenantId])
+
+  @@unique([tenantId, moduleCode])
+  @@index([tenantId, sceneCode, displayOrder])
+  @@map("mkt_scene_module")
+}
+
+model MktSceneRelease {
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id") @db.VarChar(20)
+  sceneCode       String    @map("scene_code")
+  releaseNo       Int       @map("release_no")
+  releaseStatus   String    @map("release_status")
+  releaseSnapshot Json      @map("release_snapshot")
+  publishedBy     String?   @map("published_by")
+  publishedAt     DateTime? @map("published_at")
+  createTime      DateTime  @default(now()) @map("create_time")
+  scene           MktScene  @relation(fields: [sceneCode, tenantId], references: [sceneCode, tenantId])
+
+  @@unique([tenantId, sceneCode, releaseNo])
+  @@index([tenantId, sceneCode, releaseStatus])
+  @@map("mkt_scene_release")
+}
+
+model MktPolicy {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id") @db.VarChar(20)
+  policyCode String   @map("policy_code")
+  policyName String   @map("policy_name")
+  policyType String   @map("policy_type")
+  config     Json
+  status     String   @default("ACTIVE")
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, policyCode])
+  @@index([tenantId, policyType, status])
+  @@map("mkt_policy")
+}
+
+model OmsOrderItemAttribution {
+  id                         BigInt  @id @default(autoincrement())
+  orderItemId                Int     @unique @map("order_item_id")
+  tenantId                   String  @map("tenant_id")
+  sourceSceneCodeSnapshot    String? @map("source_scene_code_snapshot")
+  sourceModuleCodeSnapshot   String? @map("source_module_code_snapshot")
+  sourceChannelSnapshot      String? @map("source_channel_snapshot")
+  sourcePagePathSnapshot     String? @map("source_page_path_snapshot")
+  shareUserIdSnapshot        String? @map("share_user_id_snapshot")
+  referrerIdSnapshot         String? @map("referrer_id_snapshot")
+  cardTemplateCodeSnapshot   String? @map("card_template_code_snapshot")
+  resolverPolicyCodeSnapshot String? @map("resolver_policy_code_snapshot")
+  resolverReleaseNoSnapshot  Int?    @map("resolver_release_no_snapshot")
+  audienceSnapshot           Json?   @map("audience_snapshot")
+  secondaryBenefitsSnapshot  Json?   @map("secondary_benefits_snapshot")
+  denyStackReasonsSnapshot   Json?   @map("deny_stack_reasons_snapshot")
+  entryContextSnapshot       Json?   @map("entry_context_snapshot")
+
+  @@index([tenantId, sourceSceneCodeSnapshot])
+  @@map("oms_order_item_attribution")
+}
+
+model RptOrderItemMarketingFact {
+  id               BigInt  @id @default(autoincrement())
+  tenantId         String  @map("tenant_id")
+  orderItemId      Int     @unique @map("order_item_id")
+  sourceSceneCode  String? @map("source_scene_code")
+  sourceModuleCode String? @map("source_module_code")
+  primaryOfferType String? @map("primary_offer_type")
+  finalPaidAmount  Decimal @map("final_paid_amount") @db.Decimal(10, 2)
+
+  @@index([tenantId, sourceSceneCode, sourceModuleCode])
+  @@map("rpt_order_item_marketing_fact")
+}

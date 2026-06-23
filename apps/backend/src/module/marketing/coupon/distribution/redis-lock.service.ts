@@ -1,0 +1,124 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from 'src/module/common/redis/redis.service';
+import { BusinessException } from 'src/common/exceptions';
+import { ResponseCode } from 'src/common/response';
+import { CouponErrorCode, CouponErrorMessages } from '../constants/error-codes';
+
+/**
+ * Redis 分布式锁服务
+ *
+ * @description 封装 Redis 分布式锁操作，用于优惠券库存扣减等并发场景
+ * @deprecated 优惠券 distribution 已改走 DB compare-and-swap + 行锁，不再依赖本服务；
+ *             新代码应直接使用 `RedisService.tryLock` / `renewLock` / `unlock` 原语，
+ *             不要再注入或扩展 RedisLockService。计划在 P3 阶段连同测试一起删除。
+ */
+@Injectable()
+export class RedisLockService {
+  private readonly logger = new Logger(RedisLockService.name);
+
+  constructor(private readonly redis: RedisService) {}
+
+  /**
+   * 执行带锁的操作
+   *
+   * @param lockKey 锁键
+   * @param callback 需要执行的回调函数
+   * @param ttl 锁过期时间（毫秒），默认10秒
+   * @param maxRetries 最大重试次数，默认3次
+   * @param retryDelay 重试延迟（毫秒），默认100ms
+   * @returns 回调函数的返回值
+   */
+  async executeWithLock<T>(
+    lockKey: string,
+    callback: () => Promise<T>,
+    ttl: number = 10000,
+    maxRetries: number = 3,
+    retryDelay: number = 100,
+  ): Promise<T> {
+    let retries = 0;
+    let lockToken: string | null = null;
+
+    // 尝试获取锁
+    while (retries < maxRetries && !lockToken) {
+      lockToken = await this.redis.tryLock(lockKey, ttl);
+
+      if (!lockToken) {
+        retries++;
+        if (retries < maxRetries) {
+          // 等待一段时间后重试
+          await this.sleep(retryDelay);
+        }
+      }
+    }
+
+    // 如果获取锁失败，抛出异常
+    if (!lockToken) {
+      this.logger.warn(`Failed to acquire lock: ${lockKey} after ${maxRetries} retries`);
+      throw new BusinessException(
+        ResponseCode.BUSINESS_ERROR,
+        CouponErrorMessages[CouponErrorCode.LOCK_ACQUIRE_FAILED],
+      );
+    }
+
+    try {
+      // 执行回调函数
+      this.logger.debug(`Lock acquired: ${lockKey}`);
+      return await callback();
+    } finally {
+      // 释放锁
+      await this.redis.unlock(lockKey, lockToken);
+      this.logger.debug(`Lock released: ${lockKey}`);
+    }
+  }
+
+  /**
+   * 尝试获取锁
+   *
+   * @param lockKey 锁键
+   * @param ttl 锁过期时间（毫秒）
+   * @returns 锁令牌（成功）或 null（失败）
+   */
+  async tryLock(lockKey: string, ttl: number = 10000): Promise<string | null> {
+    return await this.redis.tryLock(lockKey, ttl);
+  }
+
+  /**
+   * 释放锁
+   *
+   * @param lockKey 锁键
+   * @param token 锁令牌
+   */
+  async unlock(lockKey: string, token: string): Promise<void> {
+    await this.redis.unlock(lockKey, token);
+  }
+
+  /**
+   * 生成优惠券库存锁键
+   *
+   * @param templateId 模板ID
+   * @returns 锁键
+   */
+  getCouponStockLockKey(templateId: string): string {
+    return `lock:coupon:stock:${templateId}`;
+  }
+
+  /**
+   * 生成用户领取优惠券锁键
+   *
+   * @param memberId 用户ID
+   * @param templateId 模板ID
+   * @returns 锁键
+   */
+  getUserClaimLockKey(memberId: string, templateId: string): string {
+    return `lock:coupon:claim:${memberId}:${templateId}`;
+  }
+
+  /**
+   * 延迟函数
+   *
+   * @param ms 延迟时间（毫秒）
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}

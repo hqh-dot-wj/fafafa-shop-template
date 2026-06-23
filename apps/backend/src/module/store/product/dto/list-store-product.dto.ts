@@ -1,0 +1,31 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { PageQueryDto } from 'src/common/dto';
+import { ProductType, PublishStatus, StoreProductAuditStatus } from '@prisma/client';
+
+export class ListStoreProductDto extends PageQueryDto {
+  @ApiProperty({ description: '商品名称/自定义标题', required: false })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiProperty({ description: '商品类型', enum: ProductType, required: false })
+  @IsOptional()
+  @IsEnum(ProductType)
+  type?: string;
+
+  @ApiProperty({ description: '上架状态', enum: PublishStatus, required: false })
+  @IsOptional()
+  @IsEnum(PublishStatus)
+  status?: string;
+
+  @ApiProperty({ description: '审核状态', enum: StoreProductAuditStatus, required: false })
+  @IsOptional()
+  @IsEnum(StoreProductAuditStatus)
+  auditStatus?: string;
+
+  @ApiProperty({ description: '指定门店ID(仅HQ可用)', required: false })
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+}

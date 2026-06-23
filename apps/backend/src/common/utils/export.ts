@@ -1,0 +1,139 @@
+import { Logger } from '@nestjs/common';
+import * as Lodash from 'lodash';
+import * as ExcelJS from 'exceljs';
+import { Response } from 'express';
+import { StatusEnum, SexEnum, DelFlagEnum } from 'src/common/enum/index';
+
+/**
+ * 导出表头配置
+ */
+export interface ExportHeader {
+  title: string;
+  dataIndex: string;
+  width?: number;
+  formateStr?: (value: unknown) => string;
+}
+
+/**
+ * 导出选项配置
+ */
+export interface ExportOptions {
+  data: Record<string, unknown>[];
+  header: ExportHeader[];
+  sheetName?: string;
+  dictMap?: Record<string, Record<string | number, string>>;
+  filename?: string;
+}
+
+type ExportDictMap = Record<string, Record<string | number, string>>;
+
+/**
+ * 通用枚举映射配置
+ */
+export const commonExportMap: ExportDictMap = {
+  status: {
+    [StatusEnum.NORMAL]: '正常',
+    [StatusEnum.STOP]: '停用',
+  },
+  sex: {
+    [SexEnum.MAN]: '男',
+    [SexEnum.WOMAN]: '女',
+  },
+  delFlag: {
+    [DelFlagEnum.NORMAL]: '正常',
+    [DelFlagEnum.DELETE]: '已删除',
+  },
+};
+
+export async function ExportTable(options: ExportOptions, res: Response) {
+  let data = options.data;
+  const workbook = new ExcelJS.Workbook();
+  const sheetName = options.sheetName || 'Sheet1';
+  const worksheet = workbook.addWorksheet(sheetName);
+
+  // 添加表头
+  worksheet.columns = options.header.map((column) => {
+    const width = column.width;
+    return {
+      header: column.title,
+      key: column.dataIndex,
+      width: isNaN(width) ? 16 : width,
+    };
+  });
+
+  const dictMap = { ...commonExportMap, ...options.dictMap };
+
+  // 数据过滤+排序
+  data = data.map((item) => {
+    const newItem: Record<string, unknown> = {};
+    options.header.forEach((field) => {
+      const dataIndex = field.dataIndex;
+      const dataValue = Lodash.get(item, dataIndex);
+      /**字典映射 */
+      if (dictMap && dictMap[dataIndex]) {
+        newItem[dataIndex] =
+          dictMap[dataIndex][dataValue as string | number] !== undefined
+            ? dictMap[dataIndex][dataValue as string | number]
+            : dataValue;
+      } else {
+        newItem[dataIndex] = dataValue;
+      }
+
+      /** 格式化数据 */
+      if (field.formateStr && typeof field.formateStr === 'function') {
+        newItem[dataIndex] = field.formateStr(newItem[dataIndex]);
+      }
+    });
+    return newItem;
+  });
+
+  // 定义表头样式
+  const headerStyle: Partial<ExcelJS.Style> = {
+    font: {
+      size: 10,
+      bold: true,
+      color: { argb: 'ffffff' },
+    },
+    alignment: { vertical: 'middle', horizontal: 'center' },
+    fill: {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '808080' },
+    },
+    border: {
+      top: { style: 'thin', color: { argb: '9e9e9e' } },
+      left: { style: 'thin', color: { argb: '9e9e9e' } },
+      bottom: { style: 'thin', color: { argb: '9e9e9e' } },
+      right: { style: 'thin', color: { argb: '9e9e9e' } },
+    },
+  };
+
+  const headerRow = worksheet.getRow(1);
+  headerRow.eachCell((cell) => {
+    cell.style = headerStyle;
+  });
+
+  // 添加数据
+  data.forEach((item) => {
+    worksheet.addRow(item);
+  });
+
+  worksheet.columns.forEach((column) => {
+    column.alignment = { vertical: 'middle', horizontal: 'center' };
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  // 检查响应头是否已发送
+  if (res.headersSent) {
+    Logger.error('Headers already sent, cannot export file', 'Export');
+    return;
+  }
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment;filename=sheet.xlsx');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // 将 Excel 文件的二进制流数据返回给客户端
+  res.end(buffer, 'binary');
+}

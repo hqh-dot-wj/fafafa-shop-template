@@ -1,0 +1,147 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { StorePlayConfigService } from './config.service';
+import { CreateStorePlayConfigDto, ListStorePlayConfigDto, UpdateStorePlayConfigDto } from './dto/config.dto';
+import { StorePlayConfigVo, StorePlayConfigListVo } from './vo/config.vo';
+import { Api } from 'src/common/decorators/api.decorator';
+import { User, UserDto } from 'src/module/admin/system/user/user.decorator';
+import { TenantContext } from 'src/common/tenant';
+import { RequirePermission } from 'src/module/admin/common/decorators/require-permission.decorator';
+import { Operlog } from 'src/module/admin/common/decorators/operlog.decorator';
+import { BusinessType } from 'src/common/constant/business.constant';
+
+/**
+ * 营销规则配置接口 (B端/S端)
+ * @description 管理门店特有的营销玩法配置，负责配置营销规则、上下架状态及库存策略。
+ * 对应 admin-web service/api/marketing/config.ts；租户 ID 来自后台用户上下文，前端提交体不应覆盖。
+ */
+@ApiTags('营销-门店商品配置')
+@Controller('marketing/config')
+@ApiBearerAuth('Authorization')
+export class StorePlayConfigController {
+  constructor(private readonly service: StorePlayConfigService) {}
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get('list')
+  @Api({ summary: '查询门店营销商品列表', type: StorePlayConfigListVo })
+  @RequirePermission('marketing:config:list')
+  async findAll(@Query() query: ListStorePlayConfigDto) {
+    return await this.service.findAll(query);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get(':id')
+  @Api({ summary: '查询详情', type: StorePlayConfigVo })
+  @RequirePermission('marketing:config:query')
+  async findOne(@Param('id') id: string) {
+    return await this.service.findOne(id);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Post()
+  @Api({ summary: '创建营销商品', type: StorePlayConfigVo })
+  @RequirePermission('marketing:config:add')
+  @Operlog({ businessType: BusinessType.INSERT })
+  async create(@Body() dto: CreateStorePlayConfigDto, @User() user: UserDto) {
+    // ✅ 中文注释：由 Token 自动解析租户 ID，确保数据隔离安全性
+    const tenantId = user.user?.tenantId || TenantContext.SUPER_TENANT_ID;
+    return await this.service.create(dto, tenantId);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Put(':id')
+  @Api({ summary: '更新营销商品', type: StorePlayConfigVo })
+  @RequirePermission('marketing:config:edit')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  async update(@Param('id') id: string, @Body() dto: UpdateStorePlayConfigDto, @User() user?: UserDto) {
+    const operatorId = user?.user?.userId?.toString();
+    return await this.service.update(id, dto, operatorId);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Patch(':id/status')
+  @Api({ summary: '更新营销商品状态' })
+  @RequirePermission('marketing:config:status')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  async updateStatus(@Param('id') id: string, @Body('status') status: string) {
+    return await this.service.updateStatus(id, status);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Delete(':id')
+  @Api({ summary: '删除营销商品' })
+  @RequirePermission('marketing:config:delete')
+  @Operlog({ businessType: BusinessType.DELETE })
+  async delete(@Param('id') id: string) {
+    return await this.service.delete(id);
+  }
+
+  // ==================== 版本控制相关接口 ====================
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get(':id/history')
+  @Api({ summary: '获取规则历史版本列表' })
+  @RequirePermission('marketing:config:history')
+  async getRulesHistory(@Param('id') id: string) {
+    return await this.service.getRulesHistory(id);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Post(':id/rollback')
+  @Api({ summary: '回滚到指定版本' })
+  @RequirePermission('marketing:config:rollback')
+  @Operlog({ businessType: BusinessType.UPDATE })
+  async rollbackToVersion(
+    @Param('id') id: string,
+    @Body('targetVersion') targetVersion: number,
+    @User() user?: UserDto,
+  ) {
+    const operatorId = user?.user?.userId?.toString();
+    return await this.service.rollbackToVersion(id, targetVersion, operatorId);
+  }
+
+  /**
+   * @sloCategory admin
+   * @sloLatency P99 < 2000ms
+   * @sloAvailability 99%
+   */
+  @Get(':id/compare/:version')
+  @Api({ summary: '比较当前版本和指定版本的差异' })
+  @RequirePermission('marketing:config:compare')
+  async compareVersions(@Param('id') id: string, @Param('version') version: string) {
+    const targetVersion = parseInt(version, 10);
+    return await this.service.compareVersions(id, targetVersion);
+  }
+}

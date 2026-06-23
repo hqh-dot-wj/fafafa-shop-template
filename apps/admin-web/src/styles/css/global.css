@@ -1,0 +1,38 @@
+@import './reset.css';
+@import './nprogress.css';
+@import './transition.css';
+
+html,
+body,
+#app {
+  height: 100%;
+  font-family: inherit;
+  text-autospace: normal;
+}
+
+html {
+  overflow-x: hidden;
+  color: rgb(var(--base-text-color));
+}
+
+@media (min-width: 640px) {
+  /* Standard list cards must pass constrained height to NDataTable; otherwise overflow-hidden clips rows. */
+  .card-wrapper.sm\:flex-1-hidden {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .card-wrapper.sm\:flex-1-hidden > .n-card__content {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .card-wrapper.sm\:flex-1-hidden > .n-card__content > .n-data-table {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+}

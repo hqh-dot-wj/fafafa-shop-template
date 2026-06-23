@@ -1,0 +1,40 @@
+{
+  "workspace": {
+    "id": "e2b49aef-1a0b-48cb-86ce-547717bf4f11",
+    "name": "My Workspace"
+  },
+  "collections": {
+    "marketing-api-test": {
+      "id": "a397c0ed-020e-4437-b85e-c4cfe4af3de7",
+      "uid": "44218206-a397c0ed-020e-4437-b85e-c4cfe4af3de7",
+      "name": "营销模块接口测试",
+      "description": "基于项目实际路由的营销模块接口测试，含自动登录获取token",
+      "requestCount": 18,
+      "routes": {
+        "auth": "POST /api/auth/login",
+        "template": "GET|POST /api/marketing/template",
+        "config": "GET|POST /api/marketing/config",
+        "activity": "GET|POST /api/marketing/activity",
+        "coupon": "GET|POST /api/admin/marketing/coupon/templates",
+        "instance": "GET|POST /api/marketing/instance"
+      }
+    }
+  },
+  "environments": {
+    "marketing-local": {
+      "id": "62ca3ee5-82c1-4ce9-a3ca-505dcc4d3a22",
+      "uid": "44218206-62ca3ee5-82c1-4ce9-a3ca-505dcc4d3a22",
+      "name": "营销模块-本地开发",
+      "variables": [
+        "base_url (http://localhost:8080/api)",
+        "admin_token (登录请求自动设置)",
+        "group_buy_config_id (创建配置后自动设置)",
+        "flash_sale_config_id (创建配置后自动设置)",
+        "full_reduction_config_id (创建配置后自动设置)",
+        "newcomer_activity_id (创建活动后自动设置)",
+        "coupon_template_id (创建优惠券后自动设置)"
+      ]
+    }
+  },
+  "note": "第一个请求是管理员登录，会自动将 admin_token 写入环境变量。后续创建类请求会自动回填 ID 到环境变量。在 Postman 桌面端按顺序 Run Collection 即可。"
+}

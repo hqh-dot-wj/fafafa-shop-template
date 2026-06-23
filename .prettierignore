@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+.turbo
+coverage
+build
+out
+.cache
+.pnpm-store
+
+pnpm-lock.yaml
+
+# OpenAPI / 工具生成（随脚本刷新）
+libs/common-types/src/api.d.ts
+apps/admin-web/src/typings/components.d.ts
+apps/admin-web/src/typings/elegant-router.d.ts
+apps/admin-web/src/router/elegant
+apps/miniapp-client/auto-import.d.ts
+apps/miniapp-client/uni-pages.d.ts
+apps/miniapp-client/src/pages.json
+apps/miniapp-client/src/manifest.json
+apps/backend/src/metadata.ts
+apps/backend/public/openApi.json

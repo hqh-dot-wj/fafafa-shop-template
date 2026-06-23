@@ -1,0 +1,44 @@
+{
+  "name": "@apps/c-web",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "fafafa 商城模板 C 端响应式 Web（Vite 7 + Vue 3 SPA），对齐 miniapp 业务能力。",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=10.5.0"
+  },
+  "scripts": {
+    "dev": "vite --mode development",
+    "build": "vite build --mode production",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@libs/common-constants": "workspace:*",
+    "@libs/common-types": "workspace:*",
+    "@libs/common-utils": "workspace:*",
+    "axios": "catalog:",
+    "pinia": "catalog:",
+    "pinia-plugin-persistedstate": "3.2.1",
+    "vant": "^4.9.21",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.1",
+    "@vue/eslint-config-typescript": "^14.6.0",
+    "eslint": "catalog:",
+    "eslint-plugin-vue": "10.5.1",
+    "globals": "^16.4.0",
+    "typescript-eslint": "^8.46.0",
+    "vue-eslint-parser": "10.2.0",
+    "typescript": "catalog:",
+    "unplugin-auto-import": "^20.2.0",
+    "unplugin-vue-components": "30.0.0",
+    "vite": "7.3.3",
+    "vue-tsc": "3.1.4"
+  }
+}

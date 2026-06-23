@@ -1,0 +1,400 @@
+// Product master data and tenant SKU schema.
+
+enum AttrUsageType {
+  PARAM // 参数 (详情页展示)
+  SPEC // 规格 (SKU生成用)
+}
+
+enum SettleType {
+  WALLET // 进App钱包
+  BANK // 银行卡/线下打款
+}
+
+enum ProductType {
+  REAL // 实物商品 (需发货，扣绝对库存)
+  SERVICE // 服务商品 (需核销，扣时间片/每日运力)
+}
+
+enum PublishStatus {
+  OFF_SHELF // 下架
+  ON_SHELF // 上架
+}
+
+/// 总部商品构建状态（用于分步保存）
+enum ProductBuildStatus {
+  DRAFT // 草稿（尚未完成四步提交流程）
+  COMPLETED // 已完成（可进入常规经营流程）
+}
+
+/// 商品模板来源（用于建品时模板二选一持久化）
+enum ProductTemplateSource {
+  CATEGORY
+  CUSTOM
+}
+
+/// 门店商品审核状态（与通用 AuditStatus 解耦，支持草稿态）
+enum StoreProductAuditStatus {
+  DRAFT // 草稿
+  PENDING // 待审核
+  APPROVED // 已通过
+  REJECTED // 已驳回
+}
+
+// ==========================================
+// 📌 商品类别与属性
+// ==========================================
+
+/// 商品分类表 (树形结构)
+model PmsCategory {
+  catId    Int     @id @default(autoincrement()) @map("cat_id")
+  parentId Int?    @map("parent_id")
+  name     String  @db.VarChar(50)
+  level    Int // 1, 2, 3
+  icon     String?
+  sort     Int     @default(0)
+
+  // --- 关键：类型绑定 ---
+  // 比如"保洁"分类只能发服务，"清洁剂"分类只能发实物
+  bindType ProductType? @map("bind_type")
+
+  // [新增] 关联属性模板 ID
+  attrTemplateId Int? @map("attr_template_id")
+
+  attrTemplate PmsAttrTemplate? @relation(fields: [attrTemplateId], references: [templateId])
+
+  parent   PmsCategory?  @relation("CatTree", fields: [parentId], references: [catId])
+  children PmsCategory[] @relation("CatTree")
+  products PmsProduct[]
+
+  @@map("pms_category")
+}
+
+/// 品牌表 (主要用于实物)
+model PmsBrand {
+  brandId Int     @id @default(autoincrement()) @map("brand_id")
+  name    String
+  logo    String?
+
+  products PmsProduct[]
+
+  @@map("pms_brand")
+}
+
+// ==========================================
+// 📌 [新增] 商品参数/属性模板系统
+// ==========================================
+
+/// 1. 属性分类/模板表 (Attribute Group)
+/// 作用：将一堆属性打包。例如: "手机参数模板", "家政保洁模板"
+model PmsAttrTemplate {
+  templateId Int    @id @default(autoincrement()) @map("template_id")
+  name       String @db.VarChar(64)
+
+  // 关联分类 (通常是一对多，一个模板可以给多个分类用)
+  categories PmsCategory[]
+  attributes PmsAttribute[]
+  versions   PmsAttrTemplateVersion[]
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@map("pms_attr_template")
+}
+
+/// 属性模板版本快照（防止模板破坏式更新影响历史商品）
+model PmsAttrTemplateVersion {
+  versionId      String   @id @default(uuid()) @map("version_id")
+  templateId     Int      @map("template_id")
+  templateCode   String   @map("template_code") @db.VarChar(64)
+  version        Int
+  schemaSnapshot Json     @map("schema_snapshot")
+  isLatest       Boolean  @default(true) @map("is_latest")
+  createTime     DateTime @default(now()) @map("create_time")
+
+  template       PmsAttrTemplate    @relation(fields: [templateId], references: [templateId])
+  tenantProducts PmsTenantProduct[]
+
+  @@unique([templateId, version])
+  @@index([templateCode, version])
+  @@map("pms_attr_template_version")
+}
+
+/// 2. 属性名定义表 (Attribute Key)
+/// 作用：定义具体的字段。如: "材质", "服务时长"
+model PmsAttribute {
+  attrId     Int @id @default(autoincrement()) @map("attr_id")
+  templateId Int @map("template_id")
+
+  name String @db.VarChar(64) // 属性名: "材质" / "服务范围"
+
+  // --- 核心类型区分 ---
+  // PARAM: 基本参数 (纯展示，如: 产地)
+  // SPEC:  销售属性 (决定SKU，如: 颜色)
+  usageType AttrUsageType @map("usage_type")
+
+  // --- 适用商品类型 (实物/服务) ---
+  // 0:通用 1:实物专用 2:服务专用
+  // 比如 "保修期" 是实物专用，"上门时间" 是服务专用
+  applyType Int @default(0) @map("apply_type")
+
+  // --- 录入方式 ---
+  // 0: 手工录入 (Input)
+  // 1: 列表选择 (Select)
+  inputType Int @default(0) @map("input_type")
+
+  // --- 可选值列表 (逗号分隔) ---
+  // 如: "棉,麻,丝绸" 或 "挂机,柜机"
+  inputList String? @map("input_list")
+
+  sort Int @default(0)
+
+  template PmsAttrTemplate       @relation(fields: [templateId], references: [templateId])
+  values   PmsProductAttrValue[]
+
+  @@map("pms_attribute")
+}
+
+/// 3. 商品属性值存储表 (Attribute Value)
+/// 作用：记录某个商品选了什么值。如: 商品A - 材质 - 棉
+model PmsProductAttrValue {
+  id        Int    @id @default(autoincrement())
+  productId String @map("product_id")
+  attrId    Int    @map("attr_id")
+
+  // 冗余属性名，防止模板删了商品显示不出来
+  attrName String @map("attr_name")
+
+  // 实际选的值 (如: "棉")
+  value String @map("value")
+
+  product   PmsProduct   @relation(fields: [productId], references: [productId])
+  attribute PmsAttribute @relation(fields: [attrId], references: [attrId])
+
+  @@index([productId])
+  @@map("pms_product_attr_value")
+}
+
+// ==========================================
+// 📌 商品标准库 (总部视角 - Global SPU)
+// ==========================================
+model PmsProduct {
+  productId  String @id @default(uuid()) @map("product_id")
+  categoryId Int    @map("cat_id")
+  brandId    Int?   @map("brand_id")
+
+  // --- 基础信息 ---
+  name       String   @db.VarChar(100)
+  subTitle   String?  @map("sub_title") // 卖点描述
+  mainImages String[] @map("main_images") // 轮播图
+  detailHtml String   @map("detail_html") @db.Text // 富文本详情
+
+  // --- 核心类型区分 ---
+  type ProductType
+
+  // --- 创建来源 ---
+  creatorTenantId String @default("000000") @map("creator_tenant_id") @db.VarChar(20)
+
+  // --- 模板来源 ---
+  templateSource ProductTemplateSource @default(CATEGORY) @map("template_source")
+  templateId     Int?                  @map("template_id")
+
+  // --- [差异化字段] 实物特有 ---
+  weight     Int? // 重量(克)，用于算运费
+  isFreeShip Boolean @default(false) @map("is_free_ship") // 是否包邮
+
+  // --- [差异化字段] 服务特有 ---
+  serviceDuration Int?    @map("service_duration") // 服务时长(分钟)，用于排班占位
+  serviceRadius   Int?    @map("service_radius") // 默认服务半径(米)，门店可重写
+  needBooking     Boolean @default(true) @map("need_booking") // 是否需要预约
+
+  // --- 规格定义 ---
+  // 存储: [{"name": "颜色", "values": ["红", "蓝"]}]
+  specDef Json @map("spec_def")
+
+  // --- [新增] 上架状态 (Selection Center可见性) ---
+  publishStatus PublishStatus @default(ON_SHELF) @map("publish_status")
+
+  // --- 构建态（建品分步保存）---
+  buildStatus  ProductBuildStatus @default(COMPLETED) @map("build_status")
+  lastEditStep Int                @default(1) @map("last_edit_step")
+  draftSavedAt DateTime?          @map("draft_saved_at")
+
+  // --- [新增] 软删除标记 ---
+  delFlag DelFlag @default(NORMAL) @map("del_flag")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  // 关联
+  category       PmsCategory           @relation(fields: [categoryId], references: [catId])
+  brand          PmsBrand?             @relation(fields: [brandId], references: [brandId])
+  // [新增] 关联属性值
+  attrValues     PmsProductAttrValue[]
+  globalSkus     PmsGlobalSku[]
+  tenantProducts PmsTenantProduct[]
+
+  @@index([categoryId])
+  @@index([publishStatus, createTime], map: "idx_pms_product_publish_ctime")
+  @@index([publishStatus, type, createTime], map: "idx_pms_product_publish_type_ctime")
+  @@index([name], map: "idx_pms_product_name")
+  @@map("pms_product")
+}
+
+/// 标准 SKU 表 (总部定价参考)
+model PmsGlobalSku {
+  skuId     String @id @default(uuid()) @map("sku_id")
+  productId String @map("product_id")
+
+  // --- 规格组合 ---
+  // 实物: {"颜色":"红", "尺寸":"L"}
+  // 服务: {"时长":"2小时", "级别":"金牌技师"}
+  specValues Json @map("spec_values")
+
+  // --- 索引图 ---
+  skuImage String? @map("sku_image")
+
+  // --- 总部指导价 ---
+  guidePrice Decimal @map("guide_price") @db.Decimal(10, 2)
+
+  // --- [新增] 总部指导分佣配置 ---
+  distMode DistributionMode @default(RATIO) @map("dist_mode")
+
+  // 指导比例 (0.10 代表 10%) 或 指导金额 (10.00元)
+  guideRate Decimal @default(0.00) @map("guide_rate") @db.Decimal(10, 2)
+
+  // [新增] 必须加这两个字段，否则无法实现"不能比总部低/高"的管控
+  minDistRate Decimal @default(0.00) @map("min_dist_rate") @db.Decimal(10, 2) // 最低允许比例 (如 5%)
+  maxDistRate Decimal @default(50.00) @map("max_dist_rate") @db.Decimal(10, 2) // 最高允许比例 (如 30%)
+
+  // 成本价 (用于风控校验 (price - cost) > commission)
+  costPrice Decimal @default(0.00) @map("cost_price") @db.Decimal(10, 2)
+
+  product       PmsProduct     @relation(fields: [productId], references: [productId])
+  pmsTenantSkus PmsTenantSku[]
+
+  @@map("pms_global_sku")
+}
+
+// ==========================================
+// 📌 门店经营库 (分公司视角 - Tenant SPU)
+// ==========================================
+model PmsTenantProduct {
+  id                String  @id @default(uuid())
+  tenantId          String  @map("tenant_id") // 归属门店
+  productId         String  @map("product_id") // 引用总部商品
+  templateVersionId String? @map("template_version_id")
+
+  // --- 经营状态 ---
+  status PublishStatus @default(OFF_SHELF)
+  isHot  Boolean       @default(false) // 是否设为店长推荐
+  sort   Int           @default(0)
+
+  // --- 门店重写数据 (Override) ---
+  // 如果填了，就覆盖总部的标题/图片；没填就继承
+  customTitle String? @map("custom_title")
+
+  // --- 审核态字段 ---
+  auditStatus       StoreProductAuditStatus @default(DRAFT) @map("audit_status")
+  auditReason       String?                 @map("audit_reason") @db.VarChar(500)
+  submittedAt       DateTime?               @map("submitted_at")
+  auditBy           String?                 @map("audit_by") @db.VarChar(64)
+  auditTime         DateTime?               @map("audit_time")
+  syncBlockedReason String?                 @map("sync_blocked_reason") @db.VarChar(500)
+
+  // --- [服务特有] 门店派单规则 ---
+  // 比如这家店只接方圆3公里的单，另一家能接10公里
+  overrideRadius Int? @map("override_radius")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  product         PmsProduct              @relation(fields: [productId], references: [productId])
+  templateVersion PmsAttrTemplateVersion? @relation(fields: [templateVersionId], references: [versionId])
+  skus            PmsTenantSku[] // 门店的SKU价格库存
+
+  @@unique([tenantId, productId]) // 一个店不能重复上架同一个商品
+  @@index([tenantId, status, sort, createTime], map: "idx_pms_tenant_product_list")
+  @@index([tenantId, status, createTime], map: "idx_pms_tenant_product_status_ctime")
+  @@index([templateVersionId])
+  @@map("pms_tenant_product")
+}
+
+/// 幂等记录（用于关键写接口防重复提交）
+model BizIdempotencyRecord {
+  id               String    @id @default(cuid())
+  tenantId         String    @map("tenant_id") @db.VarChar(20)
+  operationId      String    @map("operation_id") @db.VarChar(64)
+  action           String    @db.VarChar(64)
+  requestHash      String    @map("request_hash") @db.VarChar(128)
+  responseSnapshot Json?     @map("response_snapshot")
+  expireTime       DateTime? @map("expire_time")
+  createTime       DateTime  @default(now()) @map("create_time")
+
+  @@unique([tenantId, operationId, action], map: "uk_biz_idempotency_tenant_operation_action")
+  @@index([tenantId, createTime])
+  @@map("biz_idempotency_record")
+}
+
+/// 门店 SKU 表 (真正的价格和库存都在这里)
+model PmsTenantSku {
+  id              String       @id @default(uuid())
+  tenantId        String       @map("tenant_id") @db.VarChar(20)
+  tenantProductId String       @map("tenant_prod_id")
+  globalSkuId     String       @map("global_sku_id") // 对应哪个标准SKU
+  globalSku       PmsGlobalSku @relation(fields: [globalSkuId], references: [skuId])
+
+  // --- 核心经营数据 ---
+  price Decimal @db.Decimal(10, 2) // 门店实际售价
+
+  // --- 库存/运力定义的歧义处理 ---
+  // 1. 实物: 真实的物理库存。卖一个少一个。
+  // 2. 服务: 每日最大接单量 (Capacity)。如果不限制填 -1。
+  //    (注意: 服务的真正"库存"是根据技师排班表实时计算的，这个字段仅做硬性上限)
+  stock Int @default(0)
+
+  isActive Boolean @default(true) // 比如这家店"红色"卖完了，可以单独下架这个SKU
+
+  // --- [新增] 门店实际分佣配置 ---
+  // 门店有权修改这个比例 (通常不能低于总部设定的底线，后端可做校验)
+  distMode DistributionMode @default(RATIO) @map("dist_mode")
+
+  // 实际执行比例 (例如总部建议 10%，门店想多推销，设为 15%)
+  distRate Decimal @default(0.00) @map("dist_rate") @db.Decimal(10, 2)
+
+  // --- [新增] 兑换商品标识 ---
+  // 标识该商品是否为兑换商品（优惠券/积分全额兑换，不参与分佣）
+  isExchangeProduct Boolean @default(false) @map("is_exchange_product")
+
+  // --- [新增] 乐观锁版本号 ---
+  // 用于防止并发更新冲突,每次更新时自动+1
+  version Int @default(0)
+
+  // --- [新增] 积分配置 ---
+  // 积分获得比例（0-100，默认100表示正常获得积分，0表示不产生积分）
+  pointsRatio Int @default(100) @map("points_ratio")
+
+  // 是否营销活动商品
+  isPromotionProduct Boolean @default(false) @map("is_promotion_product")
+
+  // 新人专享价格（null = 不参与新人活动）
+  newcomerPrice Decimal? @map("newcomer_price") @db.Decimal(10, 2)
+
+  tenantProd PmsTenantProduct @relation(fields: [tenantProductId], references: [id])
+
+  @@unique([tenantProductId, globalSkuId]) // 同一门店商品下不能重复引入同一全局SKU
+  @@map("pms_tenant_sku")
+}
+
+/// 库存变动流水表 (审计追溯)
+model PmsStockLog {
+  id          String   @id @default(uuid()) @map("id")
+  tenantId    String   @map("tenant_id") @db.VarChar(20)
+  tenantSkuId String   @map("tenant_sku_id") @db.VarChar(36)
+  operatorId  String   @map("operator_id") @db.VarChar(64)
+  stockChange Int      @map("stock_change") // 正数增加,负数减少
+  stockBefore Int      @map("stock_before")
+  stockAfter  Int      @map("stock_after")
+  reason      String?  @db.VarChar(200)
+  createTime  DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, createTime])
+  @@index([tenantSkuId])
+  @@map("pms_stock_log")
+}

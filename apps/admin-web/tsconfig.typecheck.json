@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "noImplicitAny": false,
+    "strict": false,
+    "strictNullChecks": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "src/**/*.d.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "scripts",
+    "src/**/*.spec.ts",
+    "src/locales/**",
+    "playwright.config.*",
+    "vitest.config.*",
+    "uno.config.*"
+  ],
+  "vueCompilerOptions": {
+    "strictTemplates": false
+  }
+}

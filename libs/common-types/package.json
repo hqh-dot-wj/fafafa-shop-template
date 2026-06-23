@@ -1,0 +1,25 @@
+{
+  "name": "@libs/common-types",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./enum": {
+      "types": "./dist/enum/index.d.ts",
+      "default": "./dist/enum/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && node scripts/copy-dts.mjs",
+    "contracts:generate": "openapi-typescript ../../apps/backend/public/openApi.json -o ./src/api.d.ts",
+    "generate-types": "pnpm contracts:generate"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1",
+    "typescript": "catalog:"
+  }
+}

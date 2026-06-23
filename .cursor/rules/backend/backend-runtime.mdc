@@ -1,0 +1,15 @@
+---
+description: Backend 运行时（兼容层入口；响应/异常/Controller/Repository/租户/任务语义以 AGENTS.md 为准）
+globs: apps/backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Runtime
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- `apps/backend/AGENTS.md`（多租户、事务与外部副作用、定时任务、操作日志）
+- `apps/backend/docs/agent-map.md`（读写决策、字典治理、操作日志详表）
+- `.codex/playbooks/backend-safe-change.md`、`.codex/playbooks/dict-and-job-change.md`
+
+规则冲突时以 canonical 为准。

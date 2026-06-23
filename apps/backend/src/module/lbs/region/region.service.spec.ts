@@ -1,0 +1,156 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { RegionService } from './region.service';
+import { RegionRepository } from './region.repository';
+import { RedisService } from 'src/module/common/redis/redis.service';
+import * as fs from 'fs';
+
+jest.mock('fs', () => {
+  const actualFs = jest.requireActual('fs');
+  return {
+    ...actualFs,
+    promises: {
+      ...actualFs.promises,
+      access: jest.fn(),
+      readFile: jest.fn(),
+    },
+  };
+});
+
+describe('RegionService', () => {
+  let service: RegionService;
+  let repo: RegionRepository;
+
+  const mockRepo = {
+    count: jest.fn(),
+    createMany: jest.fn(),
+    findAllRegions: jest.fn(),
+    findRoots: jest.fn(),
+    findChildren: jest.fn(),
+    findById: jest.fn(),
+  };
+
+  const mockRedisService = {
+    tryLock: jest.fn(),
+    unlock: jest.fn(),
+  };
+  const mockFs = fs.promises as unknown as {
+    access: jest.Mock;
+    readFile: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RegionService,
+        {
+          provide: RegionRepository,
+          useValue: mockRepo,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
+      ],
+    }).compile();
+
+    service = module.get<RegionService>(RegionService);
+    repo = module.get<RegionRepository>(RegionRepository);
+    mockFs.access.mockResolvedValue(undefined);
+    mockFs.readFile.mockResolvedValue('[]');
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('onModuleInit', () => {
+    it('should seed regions if count is 0', async () => {
+      mockRepo.count.mockResolvedValue(0);
+      const seedSpy = jest.spyOn(service, 'seedRegions').mockResolvedValue(undefined);
+
+      await service.onModuleInit();
+
+      expect(seedSpy).toHaveBeenCalled();
+    });
+
+    it('should not seed if regions exist', async () => {
+      mockRepo.count.mockResolvedValue(100);
+      const seedSpy = jest.spyOn(service, 'seedRegions');
+
+      await service.onModuleInit();
+
+      expect(seedSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getTree', () => {
+    it('should build a tree from flat records', async () => {
+      const mockRegions = [
+        { code: '11', name: 'Province 1', parentId: null },
+        { code: '1101', name: 'City 1', parentId: '11' },
+        { code: '12', name: 'Province 2', parentId: '' },
+      ];
+      mockRepo.findAllRegions.mockResolvedValue(mockRegions);
+
+      const tree = await service.getTree();
+
+      expect(tree.length).toBe(2);
+      expect(tree[0].code).toBe('11');
+      expect(tree[0].children.length).toBe(1);
+      expect(tree[0].children[0].code).toBe('1101');
+      expect(tree[1].code).toBe('12');
+    });
+  });
+
+  describe('seedRegions', () => {
+    it('should skip seeding when lock is not acquired', async () => {
+      mockRedisService.tryLock.mockResolvedValue(false);
+
+      await service.seedRegions();
+
+      expect(mockRepo.createMany).not.toHaveBeenCalled();
+      expect(mockRedisService.unlock).not.toHaveBeenCalled();
+    });
+
+    it('should release lock in finally when file is missing', async () => {
+      mockRedisService.tryLock.mockResolvedValue(true);
+      mockRedisService.unlock.mockResolvedValue(1);
+      mockRepo.count.mockResolvedValue(0);
+      mockFs.access.mockRejectedValueOnce(new Error('missing region json'));
+
+      await service.seedRegions();
+
+      expect(mockRedisService.unlock).toHaveBeenCalled();
+    });
+  });
+
+  describe('getChildren', () => {
+    it('should call findRoots when no parentCode', async () => {
+      await service.getChildren();
+      expect(mockRepo.findRoots).toHaveBeenCalled();
+    });
+
+    it('should call findChildren when parentCode provided', async () => {
+      await service.getChildren('110100');
+      expect(mockRepo.findChildren).toHaveBeenCalledWith('110100');
+    });
+  });
+
+  describe('getRegionName', () => {
+    it('should return region name', async () => {
+      mockRepo.findById.mockResolvedValue({ name: 'Beijing' });
+      const name = await service.getRegionName('110000');
+      expect(name).toBe('Beijing');
+    });
+
+    it('should return empty string if not found', async () => {
+      mockRepo.findById.mockResolvedValue(null);
+      const name = await service.getRegionName('000000');
+      expect(name).toBe('');
+    });
+  });
+});

@@ -1,0 +1,95 @@
+groups:
+  - name: nest-admin-rate-limit-dev
+    interval: 30s
+    rules:
+      - alert: ProductListRateLimitFallbackSpike
+        expr: increase(rate_limit_events_total{scope="client-product-list",outcome="fallback"}[5m]) > 120
+        for: 3m
+        labels:
+          severity: warning
+          service: backend
+          category: rate-limit
+          environment: dev
+        annotations:
+          summary: '商品列表限流兜底激增(dev)'
+          description: '5分钟内商品列表 stale-cache 兜底次数超过 120，建议检查压测参数与缓存命中率。'
+
+      - alert: ProductListRateLimitRejectSpike
+        expr: increase(rate_limit_events_total{scope="client-product-list",outcome="reject"}[5m]) > 20
+        for: 2m
+        labels:
+          severity: critical
+          service: backend
+          category: rate-limit
+          environment: dev
+        annotations:
+          summary: '商品列表限流拒绝激增(dev)'
+          description: '5分钟内商品列表被限流拒绝次数超过 20，已影响查询可用性。'
+
+      - alert: GlobalRateLimitRejectSpike
+        expr: increase(rate_limit_events_total{source="express",scope="global-http",outcome="reject"}[5m]) > 60
+        for: 2m
+        labels:
+          severity: critical
+          service: backend
+          category: rate-limit
+          environment: dev
+        annotations:
+          summary: '全局限流拒绝激增(dev)'
+          description: '5分钟内全局限流拒绝次数超过 60，建议检查异常流量和网关限流配置。'
+
+      - alert: ProductListFallbackDominates
+        expr: |
+          (
+            increase(rate_limit_events_total{scope="client-product-list",outcome="fallback"}[10m])
+            /
+            clamp_min(
+              increase(rate_limit_events_total{scope="client-product-list",outcome=~"fallback|reject"}[10m]),
+              1
+            )
+          ) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          service: backend
+          category: rate-limit
+          environment: dev
+        annotations:
+          summary: '商品列表长期依赖兜底(dev)'
+          description: '近10分钟限流事件中，兜底占比超过90%，主链路可能持续承压。'
+
+      - alert: ProductListOverloadFallbackSpike
+        expr: increase(rate_limit_events_total{source="overload_guard",scope="client-product-list",outcome="fallback"}[5m]) > 80
+        for: 3m
+        labels:
+          severity: warning
+          service: backend
+          category: overload
+          environment: dev
+        annotations:
+          summary: '商品列表过载兜底激增(dev)'
+          description: '5分钟内并发舱壁触发兜底超过 80，建议核查舱壁阈值与数据库连接池。'
+
+      - alert: ProductListOverloadRejectSpike
+        expr: increase(rate_limit_events_total{source="overload_guard",scope="client-product-list",outcome="reject"}[5m]) > 12
+        for: 2m
+        labels:
+          severity: critical
+          service: backend
+          category: overload
+          environment: dev
+        annotations:
+          summary: '商品列表过载拒绝激增(dev)'
+          description: '5分钟内并发舱壁触发拒绝超过 12，说明已出现明显过载丢流。'
+
+      - alert: RateLimitMetricsMissing
+        expr: absent(rate_limit_events_total)
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+          category: observability
+          environment: dev
+        annotations:
+          summary: '限流指标缺失(dev)'
+          description: '连续5分钟未采集到 rate_limit_events_total，可能是监控抓取或应用指标异常。'

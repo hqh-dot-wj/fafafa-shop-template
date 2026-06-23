@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="诸葛陪伴 — 银发教育社区团购平台 · Antigravity 风格官网" />
+    <title>诸葛陪伴 · Build the new way</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500&family=Noto+Sans+SC:wght@400;450;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/styles.css" />
+    <!-- 拆字脚本执行前即隐藏，避免首屏文字闪现 -->
+    <style>
+      [data-type]:not(.type-split) {
+        visibility: hidden;
+      }
+    </style>
+  </head>
+  <body class="ag">
+    <!-- ============== Nav ============== -->
+    <header class="ag-nav" data-nav>
+      <div class="ag-nav__inner">
+        <a href="#top" class="ag-nav__brand">
+          <span class="brand-dot"></span>
+          <span data-type>诸葛陪伴</span>
+        </a>
+        <nav class="ag-nav__menu">
+          <a href="#product">产品</a>
+          <a href="#features">特性</a>
+          <a href="#enterprise">热门课程</a>
+          <a href="#blogs">博客</a>
+        </nav>
+        <div class="ag-nav__actions">
+          <a href="#contact" class="ag-btn ag-btn--ghost">登录</a>
+          <a href="#contact" class="ag-btn ag-btn--primary">立即体验</a>
+        </div>
+        <button class="ag-nav__toggle material-symbols-outlined" aria-label="菜单">menu</button>
+      </div>
+    </header>
+
+    <div class="ag-mobile">
+      <button class="ag-mobile__close material-symbols-outlined" aria-label="关闭">close</button>
+      <a href="#product">产品</a>
+      <a href="#features">特性</a>
+      <a href="#enterprise">热门课程</a>
+      <a href="#blogs">博客</a>
+      <a href="#contact">联系我们</a>
+    </div>
+
+    <main id="top">
+      <!-- ============== HERO ============== -->
+      <section class="hero">
+        <div class="hero__stage">
+          <canvas id="confetti-fall-canvas" class="hero__canvas hero__canvas--fall" aria-hidden="true"></canvas>
+          <div class="hero__noise" aria-hidden="true"></div>
+        </div>
+
+        <div class="hero__content">
+          <p class="hero__eyebrow" data-type>诸葛陪伴 · Zhuge Companion</p>
+          <h1 class="hero__title" data-type data-type-cursor>
+            为银发时代重新定义<span class="hero__accent">社区教育</span>
+          </h1>
+          <p class="hero__sub" data-type>
+            以「滴滴老师上门 + 邻里云校长拼团」重构 2.8 亿银发人群的素质教育供给—— 家门口、零门槛、值得信任。
+          </p>
+          <div class="hero__cta">
+            <a href="#product" class="ag-btn ag-btn--primary ag-btn--lg">
+              <span data-type>了解平台</span>
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </a>
+            <a href="#blogs" class="ag-btn ag-btn--ghost ag-btn--lg"><span data-type>查看资料</span></a>
+          </div>
+        </div>
+
+        <div class="hero__scroll-hint" aria-hidden="true">
+          <span data-type>向下滚动</span>
+          <span class="material-symbols-outlined">keyboard_arrow_down</span>
+        </div>
+      </section>
+
+      <!-- ============== 产品视频（滚动放大，原 Tabs 动效） ============== -->
+      <section id="product" class="product-video">
+        <div class="container">
+          <div class="product-video__stage">
+            <div class="product-video__scaler">
+              <video
+                class="product-video__player"
+                src="assets/hero-video.mp4"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="auto"
+                aria-label="诸葛陪伴平台介绍视频"
+              ></video>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== FEATURES SECTION + HORIZONTAL CAROUSEL ============== -->
+      <section id="features" class="features">
+        <div class="icon-wave" data-icon-wave aria-label="平台能力图标">
+          <div class="icon-wave__row">
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">verified_user</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">home_pin</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">savings</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">handshake</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">insights</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">spa</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">school</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">groups</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">smartphone</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">favorite</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">diversity_3</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">celebration</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">music_note</span></div>
+            <div class="icon-wave__orbit"><span class="material-symbols-outlined">self_improvement</span></div>
+          </div>
+        </div>
+
+        <div class="container features__head">
+          <h2 class="features__title">
+            <span class="features__title-line" data-type>为<span class="hero__accent">银发学员</span>构建</span>
+            <span class="features__title-line" data-type>值得托付的教育平台</span>
+          </h2>
+          <p class="features__lead" data-type>
+            诸葛陪伴重新设计了教育的供给、信任与履约链路。无论是社区云校长、上门老师，
+            还是普通学员，都能在一个轻量、可信、家门口的体系里完成学习闭环。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============== 课程展示：左文右图（自上而下） ============== -->
+      <section id="courses" class="course-showcase">
+        <div class="container course-showcase__inner">
+          <article class="course-row">
+            <div class="course-row__copy">
+              <p class="course-row__tag" data-type>养生健康 · 太极</p>
+              <h3 class="course-row__title" data-type>身心平衡之道</h3>
+              <p class="course-row__desc" data-type>
+                传承太极文化精髓，在公园与小区空地即可练习。名师系统教学，修身养性、舒缓筋骨，
+                适合零基础银发学员循序渐进入门。
+              </p>
+              <p class="course-row__price" data-type>拼团价 ¥99/人 · 3 人成团立省 60 元</p>
+            </div>
+            <div class="course-row__media">
+              <div class="course-row__frame">
+                <img src="assets/course-taichi.png" alt="太极课程拼团海报" width="800" height="800" loading="lazy" />
+              </div>
+            </div>
+          </article>
+
+          <article class="course-row">
+            <div class="course-row__copy">
+              <p class="course-row__tag" data-type>传统养生 · 八段锦</p>
+              <h3 class="course-row__title" data-type>拼课学八段锦</h3>
+              <p class="course-row__desc" data-type>
+                人文素质教育优选课程，2 人即可成团、随时开课。专业老师上门指导，
+                动作舒缓易学，帮助中老年人在家门口完成日常养生锻炼。
+              </p>
+              <p class="course-row__price" data-type>拼团价 ¥88/人 · 轻松易学</p>
+            </div>
+            <div class="course-row__media">
+              <div class="course-row__frame">
+                <img
+                  src="assets/course-baduanjin.png"
+                  alt="八段锦课程拼团海报"
+                  width="800"
+                  height="800"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          </article>
+
+          <article class="course-row">
+            <div class="course-row__copy">
+              <p class="course-row__tag" data-type>生活美学 · 电子吹奏</p>
+              <h3 class="course-row__title" data-type>吹出优雅新乐章</h3>
+              <p class="course-row__desc" data-type>
+                电子吹奏乐器（电吹管）轻松上手、乐享音乐、陶冶身心。名师一对一系统教学，
+                零基础也能在邻里课堂上吹出属于自己的旋律。
+              </p>
+              <p class="course-row__price" data-type>拼团价 ¥99/人 · 3 人成团立省 60 元</p>
+            </div>
+            <div class="course-row__media">
+              <div class="course-row__frame">
+                <img src="assets/course-ewi.png" alt="电子吹奏乐器课程海报" width="800" height="800" loading="lazy" />
+              </div>
+            </div>
+          </article>
+
+          <article class="course-row">
+            <div class="course-row__copy">
+              <p class="course-row__tag" data-type>兴趣爱好 · 国标舞</p>
+              <h3 class="course-row__title" data-type>拼课学国标舞</h3>
+              <p class="course-row__desc" data-type>
+                中老年优雅形体提升，2 人即可开课。专业舞蹈老师上门授课，
+                微信小程序一键报名参团，在舞步中找回自信与活力。
+              </p>
+              <p class="course-row__price" data-type>拼团价 ¥88/人 · 2 人成团立省 80 元</p>
+            </div>
+            <div class="course-row__media">
+              <div class="course-row__frame">
+                <img src="assets/course-dance.png" alt="国标舞课程拼团海报" width="800" height="800" loading="lazy" />
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============== 热门课程 · 横向轮播（上图下文） ============== -->
+      <section id="enterprise" class="course-carousel" aria-label="热门拼课课程">
+        <div class="container course-carousel__head">
+          <p class="eyebrow" data-type>热门拼课</p>
+          <h2 data-type>四门精品课，邻里一起学</h2>
+        </div>
+
+        <div class="course-carousel__viewport">
+          <div class="course-carousel__track" role="list">
+            <article class="course-carousel__slide is-active" role="listitem" data-slide="0">
+              <div class="course-carousel__card">
+                <img src="assets/course-taichi.png" alt="太极课程拼团海报" width="1200" height="675" loading="lazy" />
+                <span class="course-carousel__pill">养生健康 · 太极</span>
+              </div>
+              <div class="course-carousel__foot">
+                <div class="course-carousel__copy">
+                  <h3 class="course-carousel__title" data-rise>身心平衡之道</h3>
+                  <div class="course-carousel__desc-row">
+                    <p class="course-carousel__desc" data-rise>
+                      传承太极文化精髓，名师系统教学，修身养性、舒缓筋骨，零基础银发学员也能在公园与小区空地轻松入门。
+                    </p>
+                    <div class="course-carousel__nav" aria-label="轮播导航">
+                      <button type="button" class="course-carousel__btn" data-carousel-prev aria-label="上一门课程">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                      </button>
+                      <button type="button" class="course-carousel__btn" data-carousel-next aria-label="下一门课程">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                  <a href="#contact" class="course-carousel__link" data-rise>
+                    立即拼课
+                    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article class="course-carousel__slide" role="listitem" data-slide="1">
+              <div class="course-carousel__card">
+                <img
+                  src="assets/course-baduanjin.png"
+                  alt="八段锦课程拼团海报"
+                  width="1200"
+                  height="675"
+                  loading="lazy"
+                />
+                <span class="course-carousel__pill">传统养生 · 八段锦</span>
+              </div>
+              <div class="course-carousel__foot">
+                <div class="course-carousel__copy">
+                  <h3 class="course-carousel__title" data-rise>拼课学八段锦</h3>
+                  <div class="course-carousel__desc-row">
+                    <p class="course-carousel__desc" data-rise>
+                      2 人即可成团、随时开课，专业老师上门指导。动作舒缓易学，帮助中老年人在家门口完成日常养生锻炼。
+                    </p>
+                    <div class="course-carousel__nav" aria-hidden="true">
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-prev
+                        tabindex="-1"
+                        aria-label="上一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_left</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-next
+                        tabindex="-1"
+                        aria-label="下一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                  <a href="#contact" class="course-carousel__link" data-rise>
+                    立即拼课
+                    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article class="course-carousel__slide" role="listitem" data-slide="2">
+              <div class="course-carousel__card">
+                <img src="assets/course-ewi.png" alt="电子吹奏乐器课程海报" width="1200" height="675" loading="lazy" />
+                <span class="course-carousel__pill">生活美学 · 电吹管</span>
+              </div>
+              <div class="course-carousel__foot">
+                <div class="course-carousel__copy">
+                  <h3 class="course-carousel__title" data-rise>吹出优雅新乐章</h3>
+                  <div class="course-carousel__desc-row">
+                    <p class="course-carousel__desc" data-rise>
+                      电子吹奏乐器轻松上手、乐享音乐、陶冶身心。名师系统教学，零基础也能在邻里课堂上吹出属于自己的旋律。
+                    </p>
+                    <div class="course-carousel__nav" aria-hidden="true">
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-prev
+                        tabindex="-1"
+                        aria-label="上一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_left</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-next
+                        tabindex="-1"
+                        aria-label="下一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                  <a href="#contact" class="course-carousel__link" data-rise>
+                    立即拼课
+                    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                  </a>
+                </div>
+              </div>
+            </article>
+
+            <article class="course-carousel__slide" role="listitem" data-slide="3">
+              <div class="course-carousel__card">
+                <img src="assets/course-dance.png" alt="国标舞课程拼团海报" width="1200" height="675" loading="lazy" />
+                <span class="course-carousel__pill">兴趣爱好 · 国标舞</span>
+              </div>
+              <div class="course-carousel__foot">
+                <div class="course-carousel__copy">
+                  <h3 class="course-carousel__title" data-rise>拼课学国标舞</h3>
+                  <div class="course-carousel__desc-row">
+                    <p class="course-carousel__desc" data-rise>
+                      中老年优雅形体提升，2
+                      人即可开课。专业舞蹈老师上门授课，微信小程序一键报名，在舞步中找回自信与活力。
+                    </p>
+                    <div class="course-carousel__nav" aria-hidden="true">
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-prev
+                        tabindex="-1"
+                        aria-label="上一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_left</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="course-carousel__btn"
+                        data-carousel-next
+                        tabindex="-1"
+                        aria-label="下一门课程"
+                      >
+                        <span class="material-symbols-outlined">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                  <a href="#contact" class="course-carousel__link" data-rise>
+                    立即拼课
+                    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                  </a>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== BLOGS ============== -->
+      <section id="blogs" class="blogs">
+        <div class="container">
+          <div class="blogs__head">
+            <p class="eyebrow" data-type>Latest</p>
+            <h2 data-type>关于诸葛陪伴的更多故事</h2>
+          </div>
+          <div class="blogs__grid">
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #ff6a3d; --c2: #ffb199">
+                <span class="material-symbols-outlined">campaign</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·19 · 产品</p>
+                <h4 data-type>诸葛陪伴 2.0 发布</h4>
+                <p data-type>升级派单算法与云校长面板，单小区开课效率提升 3×。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #3279f9; --c2: #9bc4ff">
+                <span class="material-symbols-outlined">groups</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·19 · 案例</p>
+                <h4 data-type>云校长李阿姨的第 100 节课</h4>
+                <p data-type>从带 3 位邻居拼团太极，到一年组织 100 节课的故事。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #00b95c; --c2: #a7f3c8">
+                <span class="material-symbols-outlined">trending_up</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·18 · 行业</p>
+                <h4 data-type>银发素质教育市场洞察</h4>
+                <p data-type>政策、需求、模式三重红利下的新一轮社区生意机会。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #a06bff; --c2: #d9c2ff">
+                <span class="material-symbols-outlined">school</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·18 · 师资</p>
+                <h4 data-type>滴滴老师入驻指南</h4>
+                <p data-type>从注册、上传资质到拿到第一单：30 分钟开启教学副业。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #fbbc04; --c2: #ffe5a3">
+                <span class="material-symbols-outlined">map</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·17 · 城市</p>
+                <h4 data-type>城市代理招募启动</h4>
+                <p data-type>首批 12 座城市开放代理席位，附完整 SOP 与数据看板。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+            <a href="#" class="blog-card">
+              <div class="blog-card__cover" style="--c1: #202124; --c2: #5f6368">
+                <span class="material-symbols-outlined">smart_toy</span>
+              </div>
+              <div class="blog-card__body">
+                <p class="blog-card__meta" data-type>2026·5·17 · 技术</p>
+                <h4 data-type>AI 派单与质检系统</h4>
+                <p data-type>用 LLM 自动审课、问诊学员反馈，平台运营从手工走向自动化。</p>
+                <span class="blog-card__arrow material-symbols-outlined">arrow_outward</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== Footer CTA ============== -->
+      <section id="contact" class="footcta">
+        <div class="container">
+          <div class="footcta__inner">
+            <h2 class="footcta__title">
+              <span class="type-line" data-type>与我们携手，</span>
+              <span class="type-line" data-type>定义银发教育基础设施</span>
+            </h2>
+            <p data-type>
+              欢迎战略投资、城市代理、物业与养老渠道、师资机构合作。获取商业计划书与试点数据，请通过商务邮箱联系。
+            </p>
+            <div class="footcta__cta">
+              <a href="mailto:contact@zhugepeiban.com" class="ag-btn ag-btn--inverse ag-btn--lg">
+                <span class="material-symbols-outlined">mail</span>
+                商务合作
+              </a>
+              <a href="mailto:join@zhugepeiban.com" class="ag-btn ag-btn--outline-light ag-btn--lg">城市代理咨询</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ag-footer">
+      <div class="container ag-footer__inner">
+        <span class="ag-footer__brand">
+          <span class="brand-dot"></span>
+          诸葛陪伴
+        </span>
+        <span data-type>© 2026 银发教育社区团购平台</span>
+        <span class="ag-footer__links">
+          <a href="#" data-type>隐私政策</a>
+          <a href="#" data-type>服务条款</a>
+          <a href="#" data-type>联系我们</a>
+        </span>
+      </div>
+    </footer>
+
+    <!-- Three.js / GSAP / ScrollTrigger / Lenis / SplitType -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
+    <script src="https://unpkg.com/split-type@0.3.4/umd/index.min.js"></script>
+
+    <script src="js/confetti-fall.js"></script>
+    <script src="js/typewriter.js"></script>
+    <script src="js/icon-wave.js"></script>
+    <script src="js/carousel.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>

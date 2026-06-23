@@ -1,0 +1,514 @@
+<script setup lang="ts">
+import { computed, reactive, ref, watch } from 'vue';
+import type { SelectOption } from 'naive-ui';
+import { useLoading } from '@sa/hooks';
+import { fetchCreateTenant, fetchUpdateTenant } from '@/service/api/system/tenant';
+import { fetchGetTenantPackageSelectList } from '@/service/api/system/tenant-package';
+import { useFormRules, useNaiveForm } from '@/hooks/common/form';
+import { $t } from '@/locales';
+import RegionCascader from '@/components/custom/RegionCascader.vue';
+import LbsMapPicker from '@/components/custom/LbsMapPicker.vue';
+import {
+  financeChannelOptions,
+  financeProfileStatusOptions,
+  financeReceiverTypeOptions,
+} from '@/views/finance/shared/finance-display';
+
+defineOptions({
+  name: 'TenantOperateDrawer',
+});
+
+type TenantFence =
+  | {
+      type: 'Polygon';
+      coordinates: number[][][];
+    }
+  | {
+      type: 'MultiPolygon';
+      coordinates: number[][][][];
+    };
+
+interface Props {
+  /** the type of operation */
+  operateType: NaiveUI.TableOperateType;
+  /** the edit row data */
+  rowData?: Api.System.Tenant | null;
+}
+
+const props = defineProps<Props>();
+
+interface Emits {
+  (e: 'submitted'): void;
+}
+
+const emit = defineEmits<Emits>();
+
+const visible = defineModel<boolean>('visible', {
+  default: false,
+});
+
+const { formRef, validate, restoreValidation } = useNaiveForm();
+const { createRequiredRule, patternRules } = useFormRules();
+const { loading: packageLoading, startLoading: startPackageLoading, endLoading: endPackageLoading } = useLoading();
+const title = computed(() => {
+  const titles: Record<NaiveUI.TableOperateType, string> = {
+    add: '新增租户',
+    edit: '编辑租户',
+  };
+  return titles[props.operateType];
+});
+
+type Model = Omit<Api.System.TenantOperateParams, 'isDirect'> & {
+  fence?: TenantFence;
+  isDirect?: boolean;
+};
+
+const model: Model = reactive(createDefaultModel());
+
+function createDefaultModel(): Model {
+  return {
+    tenantId: '',
+    contactUserName: '',
+    contactPhone: '',
+    companyName: '',
+    licenseNumber: '',
+    address: '',
+    intro: '',
+    domain: '',
+    remark: '',
+    packageId: null,
+    expireTime: null,
+    accountCount: null,
+    status: '0',
+    username: '',
+    password: '',
+    latitude: undefined,
+    longitude: undefined,
+    fence: undefined,
+    regionCode: '',
+    isDirect: true,
+    serviceRadius: 3000,
+    settlementEnabled: false,
+    settlementChannel: 'OFFLINE_TRANSFER',
+    settlementReceiverType: 'TENANT',
+    settlementReceiverAccount: '',
+    settlementReceiverName: '',
+    settlementBankName: '',
+    settlementBankAccountNo: '',
+    settlementNeedManualReview: true,
+    settlementStatus: 'DRAFT',
+    settlementRemark: '',
+  };
+}
+
+type RuleKey = Extract<
+  keyof Model,
+  'id' | 'contactUserName' | 'contactPhone' | 'companyName' | 'packageId' | 'accountCount' | 'username' | 'password'
+>;
+
+const rules: Record<RuleKey, App.Global.FormRule | App.Global.FormRule[]> = {
+  id: createRequiredRule('id不能为空'),
+  contactUserName: createRequiredRule('联系人不能为空'),
+  contactPhone: [createRequiredRule('联系电话不能为空'), { ...patternRules.phone, trigger: ['blur', 'change'] }],
+  companyName: createRequiredRule('企业名称不能为空'),
+  packageId: createRequiredRule('租户套餐不能为空'),
+  accountCount: createRequiredRule('用户数量不能为空'),
+  username: [
+    createRequiredRule('管理员账号不能为空'),
+    {
+      min: 2,
+      max: 20,
+      message: '账号长度必须介于2-20之间',
+      trigger: ['blur', 'change'],
+    },
+  ],
+  password: [
+    createRequiredRule('管理员密码不能为空'),
+    {
+      min: 5,
+      max: 20,
+      message: '密码长度必须介于5-20之间',
+      trigger: ['blur', 'change'],
+    },
+  ],
+};
+/** the enabled package options */
+const packageOptions = ref<CommonType.Option<CommonType.IdType>[]>([]);
+async function getPackageOptions() {
+  startPackageLoading();
+  try {
+    const { data } = await fetchGetTenantPackageSelectList();
+    if (!data) {
+      return;
+    }
+    packageOptions.value = data.map((item) => ({
+      label: item.packageName,
+      value: item.packageId,
+    }));
+  } catch {
+    // error handled by request interceptor
+  } finally {
+    endPackageLoading();
+  }
+}
+function handleUpdateModelWhenEdit() {
+  if (props.operateType === 'add') {
+    Object.assign(model, createDefaultModel());
+    return;
+  }
+
+  if (props.operateType === 'edit' && props.rowData) {
+    Object.assign(model, props.rowData);
+  }
+}
+
+function closeDrawer() {
+  visible.value = false;
+}
+
+async function handleSubmit() {
+  await validate();
+
+  // request
+  try {
+    if (props.operateType === 'add') {
+      const {
+        contactUserName,
+        contactPhone,
+        companyName,
+        licenseNumber,
+        address,
+        intro,
+        domain,
+        remark,
+        packageId,
+        expireTime,
+        accountCount,
+        status,
+        username,
+        password,
+        regionCode,
+        isDirect,
+        serviceRadius,
+        latitude,
+        longitude,
+        fence,
+        settlementEnabled,
+        settlementChannel,
+        settlementReceiverType,
+        settlementReceiverAccount,
+        settlementReceiverName,
+        settlementBankName,
+        settlementBankAccountNo,
+        settlementNeedManualReview,
+        settlementStatus,
+        settlementRemark,
+      } = model;
+      await fetchCreateTenant({
+        contactUserName,
+        contactPhone,
+        companyName,
+        username,
+        password,
+        licenseNumber,
+        address,
+        intro,
+        domain,
+        remark,
+        packageId,
+        expireTime,
+        accountCount,
+        status,
+        regionCode,
+        isDirect,
+        serviceRadius,
+        latitude,
+        longitude,
+        fence,
+        settlementEnabled,
+        settlementChannel,
+        settlementReceiverType,
+        settlementReceiverAccount,
+        settlementReceiverName,
+        settlementBankName,
+        settlementBankAccountNo,
+        settlementNeedManualReview,
+        settlementStatus,
+        settlementRemark,
+      });
+    } else if (props.operateType === 'edit') {
+      const {
+        id,
+        tenantId,
+        contactUserName,
+        contactPhone,
+        companyName,
+        licenseNumber,
+        address,
+        intro,
+        domain,
+        remark,
+        packageId,
+        expireTime,
+        accountCount,
+        status,
+        regionCode,
+        isDirect,
+        serviceRadius,
+        latitude,
+        longitude,
+        fence,
+        settlementEnabled,
+        settlementChannel,
+        settlementReceiverType,
+        settlementReceiverAccount,
+        settlementReceiverName,
+        settlementBankName,
+        settlementBankAccountNo,
+        settlementNeedManualReview,
+        settlementStatus,
+        settlementRemark,
+      } = model;
+      await fetchUpdateTenant({
+        id,
+        tenantId,
+        contactUserName,
+        contactPhone,
+        companyName,
+        licenseNumber,
+        address,
+        intro,
+        domain,
+        remark,
+        packageId,
+        expireTime,
+        accountCount,
+        status,
+        regionCode,
+        isDirect,
+        serviceRadius,
+        latitude,
+        longitude,
+        fence,
+        settlementEnabled,
+        settlementChannel,
+        settlementReceiverType,
+        settlementReceiverAccount,
+        settlementReceiverName,
+        settlementBankName,
+        settlementBankAccountNo,
+        settlementNeedManualReview,
+        settlementStatus,
+        settlementRemark,
+      });
+    }
+
+    window.$message?.success(props.operateType === 'add' ? $t('common.addSuccess') : $t('common.updateSuccess'));
+    closeDrawer();
+    emit('submitted');
+  } catch {
+    // error handled by request interceptor
+  }
+}
+
+// ... (existing imports)
+
+const mapVisible = ref(false);
+const currentPoint = ref<{ lat: number; lng: number } | undefined>(undefined);
+
+function openMapPicker() {
+  mapVisible.value = true;
+  if (model.latitude && model.longitude) {
+    currentPoint.value = { lat: model.latitude, lng: model.longitude };
+  }
+}
+
+function handleAddressUpdate(addr: string) {
+  model.address = addr;
+}
+
+function handleFenceUpdate(fence: TenantFence | null) {
+  model.fence = fence;
+}
+
+function handleRadiusUpdate(radius: number) {
+  model.serviceRadius = radius;
+}
+
+watch(currentPoint, (val) => {
+  if (val) {
+    model.latitude = val.lat;
+    model.longitude = val.lng;
+  }
+});
+
+watch(visible, () => {
+  if (visible.value) {
+    getPackageOptions();
+    handleUpdateModelWhenEdit();
+    restoreValidation();
+    // Reset or init LBS data if needed
+  }
+});
+</script>
+
+<template>
+  <NDrawer v-model:show="visible" :title="title" display-directive="show" :width="800" class="max-w-90%">
+    <NDrawerContent :title="title" :native-scrollbar="false" closable>
+      <NForm ref="formRef" :model="model" :rules="rules">
+        <NDivider>基本信息</NDivider>
+        <NFormItem label="企业名称" path="companyName">
+          <NInput v-model:value="model.companyName" placeholder="请输入企业名称" />
+        </NFormItem>
+        <NFormItem label="联系人" path="contactUserName">
+          <NInput v-model:value="model.contactUserName" placeholder="请输入联系人" />
+        </NFormItem>
+        <NFormItem label="联系电话" path="contactPhone">
+          <NInput v-model:value="model.contactPhone" placeholder="请输入联系电话" />
+        </NFormItem>
+        <div v-if="props.operateType === 'add'">
+          <NDivider>管理员信息</NDivider>
+          <NFormItem label="管理员账号" path="username">
+            <NInput v-model:value="model.username" placeholder="请输入管理员账号" />
+          </NFormItem>
+          <NFormItem label="管理员密码" path="password">
+            <NInput
+              v-model:value="model.password"
+              type="password"
+              show-password-on="click"
+              placeholder="请输入管理员密码"
+            />
+          </NFormItem>
+        </div>
+        <NDivider>租户设置</NDivider>
+        <NFormItem label="租户套餐" path="packageId">
+          <NSelect
+            v-model:value="model.packageId"
+            clearable
+            :disabled="props.operateType === 'edit'"
+            placeholder="请选择租户套餐"
+            :options="packageOptions"
+            :loading="packageLoading"
+          />
+        </NFormItem>
+        <NFormItem label="过期时间" path="expireTime">
+          <NDatePicker
+            v-model:formatted-value="model.expireTime"
+            type="datetime"
+            value-format="yyyy-MM-dd HH:mm:ss"
+            clearable
+            class="w-full"
+          />
+        </NFormItem>
+        <NFormItem path="accountCount">
+          <template #label>
+            <div class="flex-center">
+              <FormTip content="-1不限制用户数量" />
+              <span>用户数量</span>
+            </div>
+          </template>
+          <NInputNumber v-model:value="model.accountCount" placeholder="请输入用户数量" min="-1" class="w-full" />
+        </NFormItem>
+        <NFormItem path="domain">
+          <template #label>
+            <div class="flex-center">
+              <FormTip
+                content="可填写域名/端口 填写域名如: www.test.com 或者 www.test.com:8080 填写ip:端口如: 127.0.0.1:8080"
+              />
+              <span>绑定域名</span>
+            </div>
+          </template>
+          <NInputGroup>
+            <NInputGroupLabel>http(s)://</NInputGroupLabel>
+            <NInput v-model:value="model.domain" placeholder="请输入" />
+          </NInputGroup>
+        </NFormItem>
+        <NFormItem label="租户状态" path="status">
+          <DictRadio v-model:value="model.status" dict-code="sys_normal_disable" />
+        </NFormItem>
+        <NDivider>企业信息 (LBS)</NDivider>
+        <NFormItem label="行政区域" path="regionCode">
+          <RegionCascader v-model:value="model.regionCode" />
+        </NFormItem>
+        <NFormItem label="经营模式" path="isDirect">
+          <NSwitch v-model:value="model.isDirect">
+            <template #checked>直营</template>
+            <template #unchecked>加盟</template>
+          </NSwitch>
+        </NFormItem>
+        <NFormItem label="服务半径(米)" path="serviceRadius">
+          <NInputNumber v-model:value="model.serviceRadius" :min="0" :step="100" />
+        </NFormItem>
+        <NFormItem label="经营地址" path="address">
+          <NInputGroup>
+            <NInput v-model:value="model.address" placeholder="请选择或输入经营地址" />
+            <NButton type="primary" ghost @click="openMapPicker">地图选点 / 配置服务区</NButton>
+          </NInputGroup>
+        </NFormItem>
+        <NFormItem label="企业代码" path="licenseNumber">
+          <NInput v-model:value="model.licenseNumber" placeholder="请输入企业代码" />
+        </NFormItem>
+        <NFormItem label="企业简介" path="intro">
+          <NInput v-model:value="model.intro" type="textarea" placeholder="请输入企业简介" />
+        </NFormItem>
+        <NFormItem label="备注" path="remark">
+          <NInput v-model:value="model.remark" type="textarea" placeholder="请输入备注" />
+        </NFormItem>
+        <NDivider>结算配置</NDivider>
+        <NFormItem label="启用结算" path="settlementEnabled">
+          <NSwitch v-model:value="model.settlementEnabled" />
+        </NFormItem>
+        <NFormItem label="默认结算方式" path="settlementChannel">
+          <NSelect v-model:value="model.settlementChannel" :options="financeChannelOptions as SelectOption[]" />
+        </NFormItem>
+        <NFormItem label="接收方类型" path="settlementReceiverType">
+          <NSelect
+            v-model:value="model.settlementReceiverType"
+            :options="financeReceiverTypeOptions as SelectOption[]"
+          />
+        </NFormItem>
+        <NFormItem label="接收方账号" path="settlementReceiverAccount">
+          <NInput v-model:value="model.settlementReceiverAccount" placeholder="商户号 / 银行卡号 / 内部账户" />
+        </NFormItem>
+        <NFormItem label="接收方名称" path="settlementReceiverName">
+          <NInput v-model:value="model.settlementReceiverName" placeholder="请输入接收方名称" />
+        </NFormItem>
+        <NFormItem label="银行名称" path="settlementBankName">
+          <NInput v-model:value="model.settlementBankName" placeholder="银行卡结算时填写" />
+        </NFormItem>
+        <NFormItem label="银行卡号" path="settlementBankAccountNo">
+          <NInput v-model:value="model.settlementBankAccountNo" placeholder="银行卡结算时填写" />
+        </NFormItem>
+        <NFormItem label="人工审核" path="settlementNeedManualReview">
+          <NSwitch v-model:value="model.settlementNeedManualReview" />
+        </NFormItem>
+        <NFormItem label="配置状态" path="settlementStatus">
+          <NSelect v-model:value="model.settlementStatus" :options="financeProfileStatusOptions as SelectOption[]" />
+        </NFormItem>
+        <NFormItem label="结算备注" path="settlementRemark">
+          <NInput v-model:value="model.settlementRemark" type="textarea" placeholder="请输入结算说明" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace :size="16">
+          <NButton @click="closeDrawer">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" @click="handleSubmit">{{ $t('common.confirm') }}</NButton>
+        </NSpace>
+      </template>
+    </NDrawerContent>
+
+    <NModal v-model:show="mapVisible" title="选择地址 & 服务范围" preset="card" class="h-700px max-w-96vw w-800px">
+      <LbsMapPicker
+        v-model="currentPoint"
+        :address="model.address || ''"
+        :fence="model.fence"
+        :radius="model.serviceRadius || 0"
+        @update:address="handleAddressUpdate"
+        @update:radius="handleRadiusUpdate"
+        @update:fence="handleFenceUpdate"
+      />
+    </NModal>
+  </NDrawer>
+</template>
+
+<style scoped></style>

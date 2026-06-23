@@ -1,0 +1,592 @@
+// Distribution governance, share, qualification, and relation schema.
+
+enum DistributionMode {
+  RATIO // 按比例 (如: 销售额的 10%)
+  FIXED // 按固定金额 (如: 每单固定分 10 元)
+  NONE // 不参与分销 (如: 特价引流品)
+}
+
+/// 佣金计算基数类型
+enum CommissionBaseType {
+  ORIGINAL_PRICE // 基于商品原价（优惠由平台承担）
+  ACTUAL_PAID // 基于实付金额（优惠由推广者承担）
+  ZERO // 不分佣（兑换商品）
+}
+
+/// 活动佣金模式
+enum CommissionMode {
+  NONE // 禁佣
+  FIXED_RATE // 固定比例
+  INHERIT // 过渡态：继承商品分销逻辑
+}
+
+/// 分销分享业务类型
+enum DistShareBizType {
+  PRODUCT // 商品分享
+  ACTIVITY // 活动分享
+  PAGE // 页面分享
+}
+
+/// 分销绑定模式
+enum DistShareBindingMode {
+  RECOMMEND_CODE // 仅推荐码
+  RELATION // 仅关系绑定
+  BOTH // 两者都可
+}
+
+/// 分销归因模式
+enum DistShareAttributionMode {
+  FIRST_TOUCH // 首触归因
+  LAST_TOUCH // 末触归因
+  FIRST_BIND_LOCK // 首绑锁定
+}
+
+/// 分销服务策略目标类型
+enum DistServicePolicyTargetType {
+  PRODUCT // 商品
+  SKU // SKU
+  CATEGORY // 分类
+}
+
+/// LV0 待激活收益模式
+enum DistLv0RewardMode {
+  NONE // 不产生收益
+  PENDING // 进入待激活收益
+}
+
+/// 分销资格履约证据状态
+enum DistQualificationEvidenceStatus {
+  PENDING_DELIVERY // 待交付
+  ELIGIBLE // 可用于申请
+  USED // 已用于申请
+  INVALID // 已失效
+  REFUNDED // 已退款
+  LEGACY_IMPORT // 历史导入
+}
+
+/// 分销资格申请状态
+enum DistQualificationApplicationStatus {
+  PENDING_REVIEW // 待审核
+  APPROVED // 已通过
+  REJECTED // 已驳回
+  CANCELLED // 已取消
+}
+
+/// 分销资格档案状态
+enum DistDistributorProfileStatus {
+  ACTIVE // 生效中
+  FROZEN // 已冻结
+  REVOKED // 已撤销
+}
+
+/// 分销归因绑定状态
+enum DistAttributionBindStatus {
+  ACTIVE // 生效中
+  EXPIRED // 已过期
+  REPLACED // 已替换
+  CANCELLED // 已取消
+}
+
+/// 分销团队关系状态
+enum DistRelationStatus {
+  ACTIVE // 生效中
+  FROZEN // 已冻结
+  CANCELLED // 已取消
+}
+
+/// LV0 待激活收益状态
+enum DistPendingRewardStatus {
+  FROZEN // 冻结中
+  ELIGIBLE // 可释放
+  RELEASED // 已释放
+  VOIDED // 已作废
+}
+
+/// 分销分享令牌状态
+enum DistShareTokenStatus {
+  ACTIVE // 生效中
+  DISABLED // 已禁用
+  EXPIRED // 已过期
+}
+
+/// 分销分享事件类型
+enum DistShareEventType {
+  CLICK // 点击命中
+  BIND // 关系绑定
+  ORDER_ATTRIBUTED // 订单归因
+  ORDER_REFUND_REVERSED // 全额退款回退订单归因计数
+  EXPIRED_HIT // 过期命中
+  LIMIT_HIT // 次数命中上限
+  INVALID_HIT // 无效令牌命中
+  MANUAL_DISABLE // 人工禁用
+}
+
+// ==========================================
+// 📌 分销规则配置表 (租户级)
+// ==========================================
+model SysDistConfig {
+  id         Int     @id @default(autoincrement())
+  tenantId   String  @unique @map("tenant_id") @db.VarChar(20) // 每个租户一套规则
+  level1Rate Decimal @default(0.60) @map("level1_rate") @db.Decimal(5, 2) // 一级分佣比 (直推)
+  level2Rate Decimal @default(0.40) @map("level2_rate") @db.Decimal(5, 2) // 二级分佣比 (间推)
+  enableLV0  Boolean @default(true) @map("enable_lv0") // 是否允许普通用户参与分销
+
+  // === 跨店分销配置 ===
+  enableCrossTenant Boolean @default(false) @map("enable_cross_tenant") // 是否允许外店推荐人获取佣金
+  crossTenantRate   Decimal @default(1.00) @map("cross_tenant_rate") @db.Decimal(5, 2) // 跨店分佣折扣 (1.00=100%, 0.80=80%)
+  crossMaxDaily     Decimal @default(500.00) @map("cross_max_daily") @db.Decimal(10, 2) // 跨店佣金日限额
+
+  // === 佣金计算策略 ===
+  commissionBaseType CommissionBaseType @default(ORIGINAL_PRICE) @map("commission_base_type") // 佣金计算基数类型
+  maxCommissionRate  Decimal            @default(0.50) @map("max_commission_rate") @db.Decimal(5, 2) // 最大佣金比例（熔断保护，如50%）
+
+  createBy      String         @default("") @map("create_by") @db.VarChar(64)
+  createTime    DateTime       @default(now()) @map("create_time")
+  updateBy      String         @default("") @map("update_by") @db.VarChar(64)
+  updateTime    DateTime       @updatedAt @map("update_time")
+  playInstances PlayInstance[]
+
+  @@map("sys_dist_config")
+}
+
+// 分销规则变更历史 (审计日志)
+model SysDistConfigLog {
+  id         Int     @id @default(autoincrement())
+  tenantId   String  @map("tenant_id") @db.VarChar(20)
+  level1Rate Decimal @map("level1_rate") @db.Decimal(5, 2)
+  level2Rate Decimal @map("level2_rate") @db.Decimal(5, 2)
+  enableLV0  Boolean @map("enable_lv0")
+
+  // === 跨店分销配置 ===
+  enableCrossTenant Boolean? @map("enable_cross_tenant")
+  crossTenantRate   Decimal? @map("cross_tenant_rate") @db.Decimal(5, 2)
+  crossMaxDaily     Decimal? @map("cross_max_daily") @db.Decimal(10, 2)
+
+  // === 佣金计算配置 ===
+  commissionBaseType CommissionBaseType? @map("commission_base_type")
+  maxCommissionRate  Decimal?            @map("max_commission_rate") @db.Decimal(5, 2)
+
+  operator   String   @db.VarChar(64) // 操作人
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, createTime])
+  @@map("sys_dist_config_log")
+}
+
+/// 分销分享策略配置（租户级）
+model SysDistSharePolicy {
+  id Int @id @default(autoincrement())
+
+  tenantId String @unique @map("tenant_id") @db.VarChar(20)
+
+  linkExpireMinutes Int @default(1440) @map("link_expire_minutes")
+  maxClickCount     Int @default(100) @map("max_click_count")
+  maxBindCount      Int @default(20) @map("max_bind_count")
+  maxOrderCount     Int @default(20) @map("max_order_count")
+
+  bindingMode              DistShareBindingMode     @default(BOTH) @map("binding_mode")
+  attributionMode          DistShareAttributionMode @default(LAST_TOUCH) @map("attribution_mode")
+  attributionWindowMinutes Int                      @default(10080) @map("attribution_window_minutes")
+  enableCrossTenantBind    Boolean                  @default(false) @map("enable_cross_tenant_bind")
+  isActive                 Boolean                  @default(true) @map("is_active")
+
+  createBy   String   @default("") @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String   @default("") @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@map("sys_dist_share_policy")
+}
+
+/// 分销分享令牌
+model SysDistShareToken {
+  id String @id @default(cuid())
+
+  sid String @unique @db.VarChar(64)
+
+  tenantId    String           @map("tenant_id") @db.VarChar(20)
+  shareUserId String           @map("share_user_id") @db.VarChar(64)
+  bizType     DistShareBizType @map("biz_type")
+  bizId       String           @map("biz_id") @db.VarChar(64)
+
+  expireAt DateTime @map("expire_at")
+
+  maxClickCount Int @map("max_click_count")
+  maxBindCount  Int @map("max_bind_count")
+  maxOrderCount Int @map("max_order_count")
+
+  clickCount Int @default(0) @map("click_count")
+  bindCount  Int @default(0) @map("bind_count")
+  orderCount Int @default(0) @map("order_count")
+
+  status DistShareTokenStatus @default(ACTIVE)
+
+  metadata Json? @map("metadata")
+
+  createBy   String   @default("") @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String   @default("") @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@index([tenantId, status])
+  @@index([sid, status])
+  @@index([shareUserId, createTime])
+  @@index([expireAt])
+  @@map("sys_dist_share_token")
+}
+
+/// 分销分享事件日志
+model SysDistShareEvent {
+  id String @id @default(cuid())
+
+  sid String @db.VarChar(64)
+
+  tenantId    String  @map("tenant_id") @db.VarChar(20)
+  shareUserId String? @map("share_user_id") @db.VarChar(64)
+  memberId    String? @map("member_id") @db.VarChar(64)
+
+  eventType DistShareEventType @map("event_type")
+  bizType   DistShareBizType?  @map("biz_type")
+  bizId     String?            @map("biz_id") @db.VarChar(64)
+
+  eventCode    String? @map("event_code") @db.VarChar(64)
+  eventMessage String? @map("event_message") @db.VarChar(255)
+  orderId      String? @map("order_id") @db.VarChar(64)
+
+  metadata Json? @map("metadata")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([sid, eventType, memberId, createTime])
+  @@index([tenantId, eventType, createTime])
+  @@map("sys_dist_share_event")
+}
+
+// ==========================================
+
+// 分销黑名单 (禁止特定用户获取佣金)
+model SysDistBlacklist {
+  id         Int      @id @default(autoincrement())
+  tenantId   String   @map("tenant_id") @db.VarChar(20)
+  userId     String   @map("user_id") @db.VarChar(20)
+  reason     String?  @db.VarChar(255)
+  createBy   String   @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@unique([tenantId, userId])
+  @@map("sys_dist_blacklist")
+}
+
+// 商品级分佣配置 (覆盖租户默认配置)
+model SysDistProductConfig {
+  id       Int    @id @default(autoincrement())
+  tenantId String @map("tenant_id") @db.VarChar(20)
+
+  // 商品或品类标识 (二选一)
+  productId  String? @map("product_id") @db.VarChar(50) // 具体商品ID
+  categoryId String? @map("category_id") @db.VarChar(50) // 品类ID
+
+  // 分佣比例 (覆盖租户默认值)
+  level1Rate Decimal? @map("level1_rate") @db.Decimal(5, 2) // null表示使用租户默认值
+  level2Rate Decimal? @map("level2_rate") @db.Decimal(5, 2)
+
+  // 佣金计算策略 (覆盖租户默认值)
+  commissionBaseType CommissionBaseType? @map("commission_base_type")
+
+  // 是否启用 (软删除)
+  isActive Boolean @default(true) @map("is_active")
+
+  createBy   String   @map("create_by") @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+  updateBy   String   @map("update_by") @db.VarChar(64)
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, productId], name: "uk_tenant_product")
+  @@unique([tenantId, categoryId], name: "uk_tenant_category")
+  @@index([tenantId, isActive])
+  @@map("sys_dist_product_config")
+}
+
+// ==========================================
+// 📌 分销员等级体系
+// ==========================================
+
+/// 分销员等级定义表
+model SysDistLevel {
+  id                Int      @id @default(autoincrement())
+  tenantId          String   @map("tenant_id") @db.VarChar(20)
+  levelId           Int      @map("level_id") // 等级编号（0-10）
+  levelName         String   @map("level_name") @db.VarChar(50)
+  levelIcon         String?  @map("level_icon") @db.VarChar(255)
+  level1Rate        Decimal  @map("level1_rate") @db.Decimal(5, 4) // 一级佣金比例
+  level2Rate        Decimal  @map("level2_rate") @db.Decimal(5, 4) // 二级佣金比例
+  upgradeCondition  Json?    @map("upgrade_condition") // 升级条件（JSON）
+  maintainCondition Json?    @map("maintain_condition") // 保级条件（JSON）
+  benefits          String?  @db.Text // 等级权益描述
+  sort              Int      @default(0) // 排序
+  isActive          Boolean  @default(true) @map("is_active")
+  createBy          String   @map("create_by") @db.VarChar(64)
+  createTime        DateTime @default(now()) @map("create_time")
+  updateBy          String   @map("update_by") @db.VarChar(64)
+  updateTime        DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, levelId])
+  @@index([tenantId, isActive])
+  @@map("sys_dist_level")
+}
+
+/// 分销员等级变更日志表
+model SysDistLevelLog {
+  id         Int      @id @default(autoincrement())
+  tenantId   String   @map("tenant_id") @db.VarChar(20)
+  memberId   String   @map("member_id") @db.VarChar(20)
+  fromLevel  Int      @map("from_level")
+  toLevel    Int      @map("to_level")
+  changeType String   @map("change_type") @db.VarChar(20) // UPGRADE, DOWNGRADE, MANUAL
+  reason     String?  @db.VarChar(255)
+  operator   String?  @db.VarChar(64)
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, memberId])
+  @@index([createTime])
+  @@map("sys_dist_level_log")
+}
+
+/// 分销员申请表
+model SysDistApplication {
+  id           Int       @id @default(autoincrement())
+  tenantId     String    @map("tenant_id") @db.VarChar(20)
+  memberId     String    @map("member_id") @db.VarChar(20)
+  applyReason  String?   @map("apply_reason") @db.VarChar(500)
+  status       String    @db.VarChar(20) // PENDING, REVIEWING, APPROVED, REJECTED, CANCELLED
+  reviewerId   String?   @map("reviewer_id") @db.VarChar(20)
+  reviewTime   DateTime? @map("review_time")
+  reviewRemark String?   @map("review_remark") @db.VarChar(500)
+  autoReviewed Boolean   @default(false) @map("auto_reviewed")
+  createTime   DateTime  @default(now()) @map("create_time")
+  updateTime   DateTime  @updatedAt @map("update_time")
+
+  @@unique([tenantId, memberId, status])
+  @@index([tenantId, status])
+  @@index([memberId])
+  @@index([createTime])
+  @@map("sys_dist_application")
+}
+
+/// 分销员审核配置表
+model SysDistReviewConfig {
+  id               Int      @id @default(autoincrement())
+  tenantId         String   @unique @map("tenant_id") @db.VarChar(20)
+  enableAutoReview Boolean  @default(false) @map("enable_auto_review")
+  minRegisterDays  Int      @default(0) @map("min_register_days")
+  minOrderCount    Int      @default(0) @map("min_order_count")
+  minOrderAmount   Decimal  @default(0) @map("min_order_amount") @db.Decimal(10, 2)
+  requireRealName  Boolean  @default(false) @map("require_real_name")
+  requirePhone     Boolean  @default(true) @map("require_phone")
+  createBy         String   @map("create_by") @db.VarChar(64)
+  createTime       DateTime @default(now()) @map("create_time")
+  updateBy         String   @map("update_by") @db.VarChar(64)
+  updateTime       DateTime @updatedAt @map("update_time")
+
+  @@map("sys_dist_review_config")
+}
+
+/// 分销服务策略表
+/// 说明: 定义服务是否可分佣、是否可作为资格申请材料，以及 LV0 分享收益边界。
+model SysDistServicePolicy {
+  id                    Int                         @id @default(autoincrement())
+  tenantId              String                      @map("tenant_id") @db.VarChar(20)
+  targetType            DistServicePolicyTargetType @map("target_type")
+  targetId              String                      @map("target_id") @db.VarChar(64)
+  commissionEligible    Boolean                     @default(false) @map("commission_eligible")
+  qualificationEligible Boolean                     @default(false) @map("qualification_eligible")
+  allowLv0Share         Boolean                     @default(false) @map("allow_lv0_share")
+  lv0RewardMode         DistLv0RewardMode           @default(NONE) @map("lv0_reward_mode")
+  requireRiskConfirm    Boolean                     @default(false) @map("require_risk_confirm")
+  riskConfirmedAt       DateTime?                   @map("risk_confirmed_at")
+  riskConfirmedBy       String?                     @map("risk_confirmed_by") @db.VarChar(64)
+  isActive              Boolean                     @default(true) @map("is_active")
+  createBy              String                      @default("") @map("create_by") @db.VarChar(64)
+  createTime            DateTime                    @default(now()) @map("create_time")
+  updateBy              String                      @default("") @map("update_by") @db.VarChar(64)
+  updateTime            DateTime                    @updatedAt @map("update_time")
+
+  @@unique([tenantId, targetType, targetId], name: "uk_dist_service_policy_target", map: "uk_dist_service_policy_target")
+  @@index([tenantId, isActive], map: "idx_dist_service_policy_active")
+  @@index([tenantId, qualificationEligible], map: "idx_dist_service_policy_qual")
+  @@map("sys_dist_service_policy")
+}
+
+/// 分销资格规则表
+model SysDistQualificationRule {
+  id                       Int      @id @default(autoincrement())
+  tenantId                 String   @map("tenant_id") @db.VarChar(20)
+  targetLevelId            Int      @map("target_level_id")
+  requiredEvidenceCount    Int      @default(1) @map("required_evidence_count")
+  requiredServicePolicyIds Json?    @map("required_service_policy_ids")
+  requireManualReview      Boolean  @default(true) @map("require_manual_review")
+  minOrderAmount           Decimal  @default(0) @map("min_order_amount") @db.Decimal(10, 2)
+  minRegisterDays          Int      @default(0) @map("min_register_days")
+  requireRealName          Boolean  @default(false) @map("require_real_name")
+  isActive                 Boolean  @default(true) @map("is_active")
+  createBy                 String   @default("") @map("create_by") @db.VarChar(64)
+  createTime               DateTime @default(now()) @map("create_time")
+  updateBy                 String   @default("") @map("update_by") @db.VarChar(64)
+  updateTime               DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, targetLevelId], name: "uk_dist_qualification_rule_level", map: "uk_dist_qualification_rule_level")
+  @@index([tenantId, isActive], map: "idx_dist_qualification_rule_active")
+  @@map("sys_dist_qualification_rule")
+}
+
+/// 分销资格履约证据表
+/// 说明: 服务核销或完成后产生申请材料；材料本身不授予分销资格。
+model SysDistQualificationEvidence {
+  id                String                          @id @default(uuid())
+  tenantId          String                          @map("tenant_id") @db.VarChar(20)
+  memberId          String                          @map("member_id") @db.VarChar(64)
+  orderId           String                          @map("order_id")
+  orderItemId       Int?                            @map("order_item_id")
+  productId         String?                         @map("product_id") @db.VarChar(64)
+  skuId             String?                         @map("sku_id") @db.VarChar(64)
+  servicePolicyId   Int?                            @map("service_policy_id")
+  sourceShareUserId String?                         @map("source_share_user_id") @db.VarChar(64)
+  evidenceStatus    DistQualificationEvidenceStatus @default(PENDING_DELIVERY) @map("evidence_status")
+  verifiedAt        DateTime?                       @map("verified_at")
+  usedApplicationId String?                         @map("used_application_id")
+  invalidReason     String?                         @map("invalid_reason") @db.VarChar(255)
+  createTime        DateTime                        @default(now()) @map("create_time")
+  updateTime        DateTime                        @updatedAt @map("update_time")
+
+  @@unique([tenantId, orderId, orderItemId], name: "uk_dist_evidence_order_item", map: "uk_dist_evidence_order_item")
+  @@index([tenantId, memberId, evidenceStatus], map: "idx_dist_evidence_member_status")
+  @@index([tenantId, sourceShareUserId], map: "idx_dist_evidence_share_user")
+  @@index([verifiedAt], map: "idx_dist_evidence_verified_at")
+  @@map("sys_dist_qualification_evidence")
+}
+
+/// 分销资格申请表
+model SysDistQualificationApplication {
+  id                String                             @id @default(uuid())
+  tenantId          String                             @map("tenant_id") @db.VarChar(20)
+  memberId          String                             @map("member_id") @db.VarChar(64)
+  targetLevelId     Int                                @map("target_level_id")
+  evidenceIds       Json?                              @map("evidence_ids")
+  status            DistQualificationApplicationStatus @default(PENDING_REVIEW)
+  reviewerId        String?                            @map("reviewer_id") @db.VarChar(64)
+  reviewTime        DateTime?                          @map("review_time")
+  reviewRemark      String?                            @map("review_remark") @db.VarChar(500)
+  approvedProfileId String?                            @map("approved_profile_id")
+  applyReason       String?                            @map("apply_reason") @db.VarChar(500)
+  createTime        DateTime                           @default(now()) @map("create_time")
+  updateTime        DateTime                           @updatedAt @map("update_time")
+
+  @@index([tenantId, memberId, status], map: "idx_dist_application_member_status")
+  @@index([tenantId, status, createTime], map: "idx_dist_application_status_time")
+  @@map("sys_dist_qualification_application")
+}
+
+/// 分销资格档案表
+/// 说明: 新分销身份事实源；ums_member.levelId 仅作为兼容投影。
+model SysDistDistributorProfile {
+  id                  String                       @id @default(uuid())
+  tenantId            String                       @map("tenant_id") @db.VarChar(20)
+  memberId            String                       @map("member_id") @db.VarChar(64)
+  status              DistDistributorProfileStatus @default(ACTIVE)
+  levelId             Int                          @map("level_id")
+  qualifiedAt         DateTime                     @map("qualified_at")
+  sourceApplicationId String?                      @map("source_application_id")
+  canWithdraw         Boolean                      @default(true) @map("can_withdraw")
+  canBindRelation     Boolean                      @default(true) @map("can_bind_relation")
+  canEarnL2           Boolean                      @default(false) @map("can_earn_l2")
+  frozenReason        String?                      @map("frozen_reason") @db.VarChar(255)
+  revokedReason       String?                      @map("revoked_reason") @db.VarChar(255)
+  createTime          DateTime                     @default(now()) @map("create_time")
+  updateTime          DateTime                     @updatedAt @map("update_time")
+
+  @@unique([tenantId, memberId], name: "uk_dist_profile_member", map: "uk_dist_profile_member")
+  @@index([tenantId, status, levelId], map: "idx_dist_profile_status_level")
+  @@index([qualifiedAt], map: "idx_dist_profile_qualified_at")
+  @@map("sys_dist_distributor_profile")
+}
+
+/// 分销归因绑定表
+/// 说明: 订单默认归因来源，不等于团队关系。
+model SysDistAttributionBind {
+  id          String                    @id @default(uuid())
+  tenantId    String                    @map("tenant_id") @db.VarChar(20)
+  memberId    String                    @map("member_id") @db.VarChar(64)
+  shareUserId String                    @map("share_user_id") @db.VarChar(64)
+  sourceSid   String?                   @map("source_sid") @db.VarChar(64)
+  bindMode    DistShareAttributionMode  @default(LAST_TOUCH) @map("bind_mode")
+  expireAt    DateTime?                 @map("expire_at")
+  status      DistAttributionBindStatus @default(ACTIVE)
+  createTime  DateTime                  @default(now()) @map("create_time")
+  updateTime  DateTime                  @updatedAt @map("update_time")
+
+  @@index([tenantId, memberId, status], map: "idx_dist_attr_bind_member_status")
+  @@index([tenantId, shareUserId, status], map: "idx_dist_attr_bind_share_status")
+  @@index([expireAt], map: "idx_dist_attr_bind_expire_at")
+  @@map("sys_dist_attribution_bind")
+}
+
+/// 分销团队关系表
+/// 说明: 仅记录正式分销员团队归属，佣金计算最多读取 L1/L2，不递归无限链。
+model SysDistRelation {
+  id                  String             @id @default(uuid())
+  tenantId            String             @map("tenant_id") @db.VarChar(20)
+  distributorMemberId String             @map("distributor_member_id") @db.VarChar(64)
+  teamOwnerMemberId   String?            @map("team_owner_member_id") @db.VarChar(64)
+  inviterMemberId     String?            @map("inviter_member_id") @db.VarChar(64)
+  sourceApplicationId String?            @map("source_application_id")
+  status              DistRelationStatus @default(ACTIVE)
+  effectiveAt         DateTime           @default(now()) @map("effective_at")
+  createTime          DateTime           @default(now()) @map("create_time")
+  updateTime          DateTime           @updatedAt @map("update_time")
+
+  @@unique([tenantId, distributorMemberId], name: "uk_dist_relation_distributor", map: "uk_dist_relation_distributor")
+  @@index([tenantId, teamOwnerMemberId, status], map: "idx_dist_relation_team_owner")
+  @@index([tenantId, inviterMemberId, status], map: "idx_dist_relation_inviter")
+  @@map("sys_dist_relation")
+}
+
+/// 分销团队关系变更日志
+model SysDistRelationLog {
+  id                    BigInt   @id @default(autoincrement())
+  tenantId              String   @map("tenant_id") @db.VarChar(20)
+  relationId            String?  @map("relation_id")
+  distributorMemberId   String   @map("distributor_member_id") @db.VarChar(64)
+  fromTeamOwnerMemberId String?  @map("from_team_owner_member_id") @db.VarChar(64)
+  toTeamOwnerMemberId   String?  @map("to_team_owner_member_id") @db.VarChar(64)
+  fromStatus            String?  @map("from_status") @db.VarChar(30)
+  toStatus              String?  @map("to_status") @db.VarChar(30)
+  changeType            String   @map("change_type") @db.VarChar(30)
+  reason                String?  @db.VarChar(255)
+  operator              String?  @db.VarChar(64)
+  createTime            DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, distributorMemberId], map: "idx_dist_relation_log_member")
+  @@index([createTime], map: "idx_dist_relation_log_time")
+  @@map("sys_dist_relation_log")
+}
+
+/// LV0 待激活收益表
+/// 说明: 普通用户分享产生但未具备提现资格的收益，不进入 fin_wallet.balance。
+model SysDistPendingReward {
+  id               String                  @id @default(uuid())
+  tenantId         String                  @map("tenant_id") @db.VarChar(20)
+  memberId         String                  @map("member_id") @db.VarChar(64)
+  orderId          String                  @map("order_id")
+  orderItemId      Int?                    @map("order_item_id")
+  amount           Decimal                 @db.Decimal(10, 2)
+  status           DistPendingRewardStatus @default(FROZEN)
+  releaseProfileId String?                 @map("release_profile_id")
+  voidReason       String?                 @map("void_reason") @db.VarChar(255)
+  createTime       DateTime                @default(now()) @map("create_time")
+  updateTime       DateTime                @updatedAt @map("update_time")
+
+  @@unique([tenantId, memberId, orderId, orderItemId], name: "uk_dist_pending_reward_order", map: "uk_dist_pending_reward_order")
+  @@index([tenantId, memberId, status], map: "idx_dist_pending_reward_member")
+  @@index([orderId], map: "idx_dist_pending_reward_order")
+  @@map("sys_dist_pending_reward")
+}

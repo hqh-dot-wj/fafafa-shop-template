@@ -1,0 +1,16 @@
+---
+description: Admin-Web 结构（兼容层入口；页面布局/index.vue + modules/常用 hooks 以 AGENTS.md 为准）
+globs: apps/admin-web/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# Admin-Web Structure
+
+本文件是 Cursor 兼容层，不再承载规则正文。完整权威规则见：
+
+- `apps/admin-web/AGENTS.md`（反模式、高风险页面、E2E 触发）
+- `apps/admin-web/docs/page-patterns.md`（页面模式矩阵、根容器、文案、状态渲染）
+- `apps/admin-web/docs/conventions.md`（API 类型、Naive UI hooks、列名规范）
+- `.codex/playbooks/admin-web-module-change.md`
+
+规则冲突时以 canonical 为准。

@@ -1,0 +1,307 @@
+# main 分支：构建 backend/admin/h5/landing 镜像 → 推 GHCR → SSH 部署到 Ubuntu ECS
+# 部署资产均在 deploy/ 目录；前置见 deploy/ci.env.example、deploy/env.production.example
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    # 仅部署相关变更才构建镜像，避免「改文档也跑 4 路 Docker build」
+    paths:
+      - 'apps/**'
+      - 'libs/**'
+      - 'deploy/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name (lowercase)
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "prefix=${{ env.REGISTRY }}/${REPO_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/backend:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/backend:latest
+          # 构建缓存放 GHCR，不占 Actions 10GB 配额（原 type=gha,mode=max 易撑满 Caches）
+          cache-from: type=registry,ref=${{ steps.meta.outputs.prefix }}/backend:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.prefix }}/backend:buildcache,mode=max
+
+  build-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name (lowercase)
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "prefix=${{ env.REGISTRY }}/${REPO_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push admin
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/admin.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/admin:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/admin:latest
+          build-args: |
+            VITE_BASE_URL=/admin/
+            VITE_SERVICE_BASE_URL=
+            VITE_APP_BASE_API=/api
+            VITE_HTTP_PROXY=N
+          cache-from: type=registry,ref=${{ steps.meta.outputs.prefix }}/admin:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.prefix }}/admin:buildcache,mode=max
+
+  build-h5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name (lowercase)
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "prefix=${{ env.REGISTRY }}/${REPO_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push h5
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/h5.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/h5:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/h5:latest
+          build-args: |
+            VITE_SERVER_BASEURL=/api
+            VITE_APP_PUBLIC_BASE=/h5/
+          cache-from: type=registry,ref=${{ steps.meta.outputs.prefix }}/h5:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.prefix }}/h5:buildcache,mode=max
+
+  build-landing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name (lowercase)
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "prefix=${{ env.REGISTRY }}/${REPO_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push landing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/landing.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/landing:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/landing:latest
+          cache-from: type=registry,ref=${{ steps.meta.outputs.prefix }}/landing:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.prefix }}/landing:buildcache,mode=max
+
+  deploy:
+    needs: [build-backend, build-admin, build-h5, build-landing]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load deploy/ci.env
+        run: |
+          if [ -f deploy/ci.env ]; then
+            set -a
+            # shellcheck disable=SC1091
+            . deploy/ci.env
+            set +a
+            echo "DEPLOY_HOSTS=${DEPLOY_HOSTS}" >> "$GITHUB_ENV"
+            echo "DEPLOY_USERS=${DEPLOY_USERS}" >> "$GITHUB_ENV"
+            echo "DEPLOY_PORTS=${DEPLOY_PORTS:-22}" >> "$GITHUB_ENV"
+            echo "DEPLOY_PATHS=${DEPLOY_PATHS}" >> "$GITHUB_ENV"
+            echo "PROJECT_NAMES=${PROJECT_NAMES}" >> "$GITHUB_ENV"
+            echo "HTTP_PORT=${HTTP_PORT:-80}" >> "$GITHUB_ENV"
+            echo "RUN_MIGRATE=${RUN_MIGRATE:-true}" >> "$GITHUB_ENV"
+            echo "RUN_DB_RESET=${RUN_DB_RESET:-false}" >> "$GITHUB_ENV"
+            echo "RUN_HUNAN_SEED=${RUN_HUNAN_SEED:-false}" >> "$GITHUB_ENV"
+            echo "RUN_H5_SUPPLEMENT=${RUN_H5_SUPPLEMENT:-false}" >> "$GITHUB_ENV"
+            echo "RUN_BOOTSTRAP=${RUN_BOOTSTRAP:-false}" >> "$GITHUB_ENV"
+            echo "RUN_SEED=${RUN_SEED:-false}" >> "$GITHUB_ENV"
+            echo "RUN_IMAGE_PRUNE=${RUN_IMAGE_PRUNE:-true}" >> "$GITHUB_ENV"
+          else
+            echo "::error::缺少 deploy/ci.env，请复制 deploy/ci.env.example"
+            exit 1
+          fi
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          if [ -z "${REGISTRY_NAMESPACE:-}" ]; then
+            REGISTRY_NAMESPACE="${{ env.REGISTRY }}/${REPO_LC}"
+          fi
+          echo "REGISTRY_NAMESPACE=${REGISTRY_NAMESPACE}" >> "$GITHUB_ENV"
+
+      - name: Setup SSH
+        run: |
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "::error::请配置 GitHub Secret: SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy to server
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          CI_REGISTRY: ${{ env.REGISTRY }}
+        run: |
+          set -e
+          get_nth() {
+            list="$1"; idx="$2"
+            [ -z "$list" ] && { echo ""; return; }
+            oldIFS="$IFS"; IFS=','; set -- $list; IFS="$oldIFS"
+            i=1; last=""
+            for item in "$@"; do
+              last="$item"
+              if [ "$i" -eq "$idx" ]; then echo "$item"; return; fi
+              i=$((i+1))
+            done
+            echo "$last"
+          }
+
+          HOSTS=$(echo "${DEPLOY_HOSTS}" | tr '，' ',')
+          set -- $(echo "$HOSTS" | tr ',' ' ')
+          TARGET_COUNT=$#
+
+          i=1
+          while [ "$i" -le "$TARGET_COUNT" ]; do
+            HOST=$(get_nth "$HOSTS" "$i")
+            USER=$(get_nth "$(echo "${DEPLOY_USERS}" | tr '，' ',')" "$i")
+            PORT=$(get_nth "$(echo "${DEPLOY_PORTS:-22}" | tr '，' ',')" "$i")
+            PATH_DIR=$(get_nth "$(echo "${DEPLOY_PATHS}" | tr '，' ',')" "$i")
+            PROJECT_NAME=$(get_nth "$(echo "${PROJECT_NAMES:-nest-admin}" | tr '，' ',')" "$i")
+
+            echo "==> 部署 $USER@$HOST:$PORT → $PATH_DIR"
+
+            STAGING="/tmp/nest-admin-deploy-$$"
+            USE_SUDO=""
+            [ "$USER" != "root" ] && USE_SUDO="sudo "
+
+            ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER@$HOST" "mkdir -p $STAGING/nginx $STAGING/scripts"
+
+            scp -P "$PORT" deploy/docker-compose.prod.yml "$USER@$HOST:$STAGING/"
+            scp -P "$PORT" deploy/nginx/gateway.conf "$USER@$HOST:$STAGING/nginx/"
+            scp -P "$PORT" deploy/scripts/remote_deploy.sh "$USER@$HOST:$STAGING/scripts/"
+            scp -P "$PORT" deploy/scripts/cleanup-images.sh "$USER@$HOST:$STAGING/scripts/"
+            scp -P "$PORT" deploy/scripts/seed-play-definition-minimal.sql "$USER@$HOST:$STAGING/scripts/"
+
+            if [ -n "$USE_SUDO" ]; then
+              ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER@$HOST" \
+                "sudo mkdir -p $PATH_DIR/nginx $PATH_DIR/scripts && \
+                 sudo cp $STAGING/docker-compose.prod.yml $PATH_DIR/ && \
+                 sudo cp $STAGING/nginx/gateway.conf $PATH_DIR/nginx/ && \
+                 sudo cp $STAGING/scripts/remote_deploy.sh $STAGING/scripts/cleanup-images.sh $STAGING/scripts/seed-play-definition-minimal.sql $PATH_DIR/scripts/ && \
+                 sudo chmod +x $PATH_DIR/scripts/remote_deploy.sh $PATH_DIR/scripts/cleanup-images.sh"
+              REMOTE_SH="sudo env"
+            else
+              ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER@$HOST" \
+                "mkdir -p $PATH_DIR/nginx $PATH_DIR/scripts && \
+                 cp $STAGING/docker-compose.prod.yml $PATH_DIR/ && \
+                 cp $STAGING/nginx/gateway.conf $PATH_DIR/nginx/ && \
+                 cp $STAGING/scripts/remote_deploy.sh $STAGING/scripts/cleanup-images.sh $STAGING/scripts/seed-play-definition-minimal.sql $PATH_DIR/scripts/ && \
+                 chmod +x $PATH_DIR/scripts/remote_deploy.sh $PATH_DIR/scripts/cleanup-images.sh"
+              REMOTE_SH="env"
+            fi
+
+            RUN_CMD="DEPLOY_DIR=$PATH_DIR \
+              PROJECT_NAME=$PROJECT_NAME \
+              IMAGE_TAG=$IMAGE_TAG \
+              REGISTRY_NAMESPACE=$REGISTRY_NAMESPACE \
+              REGISTRY_USER=$REGISTRY_USER \
+              REGISTRY_PASSWORD=$REGISTRY_PASSWORD \
+              CI_REGISTRY=$CI_REGISTRY \
+              RUN_MIGRATE=${RUN_MIGRATE:-true} \
+              RUN_DB_RESET=${RUN_DB_RESET:-false} \
+              RUN_HUNAN_SEED=${RUN_HUNAN_SEED:-false} \
+              RUN_H5_SUPPLEMENT=${RUN_H5_SUPPLEMENT:-false} \
+              RUN_BOOTSTRAP=${RUN_BOOTSTRAP:-false} \
+              RUN_SEED=${RUN_SEED:-false} \
+              RUN_IMAGE_PRUNE=${RUN_IMAGE_PRUNE:-true} \
+              HTTP_PORT=${HTTP_PORT:-80} \
+              CI_COMMIT_BRANCH=${{ github.ref_name }} \
+              CI_COMMIT_SHORT_SHA=${{ github.sha }} \
+              sh $PATH_DIR/scripts/remote_deploy.sh prod"
+
+            ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER@$HOST" "${REMOTE_SH} ${RUN_CMD}"
+            i=$((i+1))
+          done

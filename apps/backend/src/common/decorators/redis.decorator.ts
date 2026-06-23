@@ -1,0 +1,219 @@
+import { Inject } from '@nestjs/common';
+import { RedisService } from 'src/module/common/redis/redis.service';
+import { paramsKeyFormat } from '../utils/decorator';
+import { TenantContext } from '../tenant';
+
+type CacheArgPrimitive = string | number | boolean | null | undefined;
+type CacheValue = string | number | CacheObject | CacheValue[];
+interface CacheObject {
+  [key: string]: CacheValue;
+}
+type CacheMethodArg = CacheArgPrimitive | CacheObject | CacheMethodArg[];
+type CacheMethod = (...args: CacheMethodArg[]) => Promise<CacheValue>;
+interface CacheHost {
+  redis: RedisService;
+}
+
+/** 随机过期时间偏移范围（秒） */
+const JITTER_RANGE = 300; // 5分钟
+
+/** 缓存更新重试配置 */
+const CACHE_RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 100,
+};
+
+/**
+ * 添加随机过期偏移（防雪崩）
+ */
+function addJitter(baseTtl: number): number {
+  const jitter = Math.floor(Math.random() * JITTER_RANGE);
+  return baseTtl + jitter;
+}
+
+/**
+ * 带重试的缓存操作
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  context: string,
+  maxRetries: number = CACHE_RETRY_CONFIG.maxRetries,
+): Promise<T | null> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries;
+      if (isLastAttempt) {
+        // 最后一次重试失败，记录警告但不抛出异常（缓存失败不应阻塞业务）
+        console.warn(`[CacheRetry] ${context} failed after ${maxRetries} attempts:`, error);
+        return null;
+      }
+      // 指数退避
+      const delay = CACHE_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return null;
+}
+
+/**
+ * 缓存失效装饰器
+ *
+ * @param CACHE_NAME - 缓存键前缀
+ * @param CACHE_KEY - 缓存键模板，支持 {param} 占位符
+ * @example
+ * @CacheEvict(CacheEnum.SYS_USER_KEY, '{userId}')
+ * async updateUser(userId: number) { }
+ *
+ * @CacheEvict(CacheEnum.SYS_USER_KEY, '*')
+ * async clearAllUserCache() { }
+ */
+export function CacheEvict(CACHE_NAME: string, CACHE_KEY: string) {
+  const injectRedis = Inject(RedisService);
+
+  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) {
+    injectRedis(target, 'redis');
+
+    const originMethod = descriptor.value as CacheMethod;
+
+    descriptor.value = async function (this: CacheHost, ...args: CacheMethodArg[]) {
+      const result = await originMethod.apply(this, args);
+
+      const key = paramsKeyFormat(originMethod, CACHE_KEY, args);
+
+      if (key === '*') {
+        await this.redis.scanAndDeleteByMatch(`${CACHE_NAME}*`);
+      } else if (key !== null) {
+        // 包含租户ID到缓存键中（如果存在）
+        const tenantId = TenantContext.getTenantId();
+        const fullKey = tenantId ? `${CACHE_NAME}${tenantId}:${key}` : `${CACHE_NAME}${key}`;
+        await this.redis.del(fullKey);
+      } else {
+        const tenantId = TenantContext.getTenantId();
+        const fullKey = tenantId ? `${CACHE_NAME}${tenantId}:${CACHE_KEY}` : `${CACHE_NAME}${CACHE_KEY}`;
+        await this.redis.del(fullKey);
+      }
+
+      return result;
+    };
+  };
+}
+
+/**
+ * 批量缓存失效装饰器
+ *
+ * @param configs - 多个缓存键配置
+ * @example
+ * @CacheEvictMultiple([
+ *   { name: CacheEnum.SYS_USER_KEY, key: '{userId}' },
+ *   { name: CacheEnum.SYS_ROLE_KEY, key: '{roleId}' },
+ * ])
+ */
+export function CacheEvictMultiple(configs: Array<{ name: string; key: string }>) {
+  const injectRedis = Inject(RedisService);
+
+  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) {
+    injectRedis(target, 'redis');
+
+    const originMethod = descriptor.value as CacheMethod;
+
+    descriptor.value = async function (this: CacheHost, ...args: CacheMethodArg[]) {
+      const result = await originMethod.apply(this, args);
+
+      for (const config of configs) {
+        const key = paramsKeyFormat(originMethod, config.key, args);
+
+        if (key === '*') {
+          await this.redis.scanAndDeleteByMatch(`${config.name}*`);
+        } else if (key !== null) {
+          await this.redis.del(`${config.name}${key}`);
+        }
+      }
+
+      return result;
+    };
+  };
+}
+
+/**
+ * 缓存装饰器（带防雪崩机制）
+ *
+ * @param CACHE_NAME - 缓存键前缀
+ * @param CACHE_KEY - 缓存键模板，支持 {param} 占位符
+ * @param CACHE_EXPIRESIN - 过期时间（秒），默认3600秒
+ * @example
+ * @Cacheable(CacheEnum.SYS_USER_KEY, '{userId}', 3600)
+ * async getUser(userId: number) { }
+ */
+export function Cacheable(CACHE_NAME: string, CACHE_KEY: string, CACHE_EXPIRESIN: number = 3600) {
+  const injectRedis = Inject(RedisService);
+
+  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) {
+    injectRedis(target, 'redis');
+
+    const originMethod = descriptor.value as CacheMethod;
+
+    descriptor.value = async function (this: CacheHost, ...args: CacheMethodArg[]) {
+      const key = paramsKeyFormat(originMethod, CACHE_KEY, args);
+
+      if (key === null) {
+        return await originMethod.apply(this, args);
+      }
+
+      // 包含租户ID到缓存键中（如果存在）
+      const tenantId = TenantContext.getTenantId();
+      const fullKey = tenantId ? `${CACHE_NAME}${tenantId}:${key}` : `${CACHE_NAME}${key}`;
+
+      const cacheResult = await this.redis.get(fullKey);
+
+      if (!cacheResult) {
+        const result = await originMethod.apply(this, args);
+
+        // 添加随机偏移防止缓存雪崩
+        const ttl = addJitter(CACHE_EXPIRESIN);
+        await this.redis.set(fullKey, result, ttl);
+
+        return result;
+      }
+
+      return cacheResult;
+    };
+  };
+}
+
+/**
+ * 缓存更新装饰器 - 执行方法后更新缓存（带重试机制）
+ *
+ * @param CACHE_NAME - 缓存键前缀
+ * @param CACHE_KEY - 缓存键模板
+ * @param CACHE_EXPIRESIN - 过期时间（秒）
+ *
+ * @description
+ * 缓存更新失败时会自动重试（最多3次，指数退避）
+ * 重试全部失败后记录警告日志，但不阻塞业务流程
+ */
+export function CachePut(CACHE_NAME: string, CACHE_KEY: string, CACHE_EXPIRESIN: number = 3600) {
+  const injectRedis = Inject(RedisService);
+
+  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) {
+    injectRedis(target, 'redis');
+
+    const originMethod = descriptor.value as CacheMethod;
+
+    descriptor.value = async function (this: CacheHost, ...args: CacheMethodArg[]) {
+      const result = await originMethod.apply(this, args);
+
+      const key = paramsKeyFormat(originMethod, CACHE_KEY, args);
+      if (key !== null) {
+        const ttl = addJitter(CACHE_EXPIRESIN);
+        const cacheKey = `${CACHE_NAME}${key}`;
+
+        // 带重试的缓存更新
+        await withRetry(() => this.redis.set(cacheKey, result, ttl), `CachePut ${cacheKey}`);
+      }
+
+      return result;
+    };
+  };
+}

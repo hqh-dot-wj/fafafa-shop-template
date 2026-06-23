@@ -1,0 +1,233 @@
+# quality-attributes/matrix.yml
+# 文件路径 → 质量属性路由矩阵
+# 用途：
+#   1. AI reviewer 根据 PR 影响范围确定需核查的属性集合
+#   2. check:slice / verify:pr-slice 读取此文件输出 PR 勾选建议（scripts/tasks/quality-matrix-routes.mjs）
+# 更新时同步更新 QUALITY_ATTRIBUTE_GOVERNANCE.md §3
+
+version: '1.0'
+last_verified: '2026-05-11'
+
+# ─────────────────────────────────────────────
+# 质量属性定义（gate: hard | soft）
+# ─────────────────────────────────────────────
+attributes:
+  correctness:
+    label: 业务正确性
+    gate: hard
+    description: 状态机、金额非负、幂等、并发控制、事务、租户隔离
+    ai_verify:
+      - 状态转换是否单向、无跳过
+      - 金额字段是否有非负约束和精度声明
+      - 写操作是否有幂等键或 DB 唯一约束
+      - 是否有并发控制（乐观锁/悲观锁/DB 约束）
+      - 事务回滚路径是否有测试覆盖
+
+  db_query:
+    label: 数据库查询安全
+    gate: soft # 升级条件：新增行 violations=0 持续 10 次 CI
+    description: 分页上限、索引声明、N+1、循环写库
+    script: check-node-blocking-patterns
+    ai_verify:
+      - findMany 是否有 take 上限（最大值需在 PR 中声明）
+      - 排序/过滤字段是否有 @@index 或说明理由
+      - 关联关系是否通过 include/select 合并（无 N+1）
+      - 是否有循环内 await prisma.* 操作
+
+  resilience:
+    label: 弹性与兜底
+    gate: soft
+    description: 缓存命中/未命中/失效、fallback 语义、队列失败
+    script: check-queue-contracts
+    ai_verify:
+      - 缓存改动是否覆盖命中/未命中/失效三条路径
+      - fallback 是否有明确语义（非静默返回空或无限 retry）
+      - Redis 断开时是否有明确错误降级
+
+  backend_performance:
+    label: 后端接口性能
+    gate: soft
+    description: 无阻塞主链路、导出限制、队列路径
+    script: check-export-limits
+    ai_verify:
+      - 是否有 CPU 密集/大 I/O 放在 HTTP 请求链路内
+      - 导出接口是否有 limit 保护或走异步任务路径
+
+  frontend_bundle:
+    label: 前端包体积
+    gate: soft # 升级条件：建立禁止名单基线后
+    description: 禁止名单包不进首屏、路由懒加载、重依赖声明
+    script: check-admin-bundle-budget # ⬜ 待建
+    ai_verify:
+      - echarts/monaco-editor/xlsx/@umoteam/editor 是否进入首屏 chunk
+      - 新增路由是否使用动态 import
+      - 新增压缩后 >50KB 依赖是否有说明
+
+  ux_states:
+    label: 前端 UX 状态
+    gate: soft # 无法机械扫描，依赖 AI review
+    description: loading/empty/error/retry 状态完整性
+    ai_verify:
+      - 列表/详情页是否有 loading 态
+      - 数据为空时是否有 empty 态
+      - 接口失败时是否有 error 提示 + 可操作动作
+      - 提交按钮是否有 loading/disabled 防重复
+
+  security:
+    label: 安全与权限
+    gate: hard
+    description: 注入/XSS、权限校验、租户隔离、敏感字段、硬编码密钥
+    hooks: [pre-write-guard]
+    ai_verify:
+      - 接口是否有 @RequirePermission 或等效守卫
+      - 是否有跨租户隔离
+      - 日志/响应中是否有明文密码/token
+      - 是否有硬编码 tenantId/secret
+      - 是否有 SQL 注入或未消毒 v-html
+
+# ─────────────────────────────────────────────
+# 文件路径路由规则
+# key: glob 模式（按 minimatch 语法）
+# required: 必须核查的属性列表
+# hint: AI reviewer 额外提示
+# ─────────────────────────────────────────────
+routes:
+  # 金融模块（最高风险）
+  'apps/backend/src/module/finance/**':
+    required: [correctness, security, db_query, resilience]
+    hint: 金融模块 — 必须证明金额非负、幂等键、事务回滚、缓存路径
+
+  # 订单/购物车/履约
+  'apps/backend/src/module/client/order/**':
+    required: [correctness, security, db_query]
+    hint: 订单模块 — 状态机、库存扣减、支付幂等
+
+  # 支付
+  'apps/backend/src/module/payment/**':
+    required: [correctness, security]
+    hint: 支付模块 — 回调幂等、防重复扣款、第三方失败补偿
+
+  # 营销
+  'apps/backend/src/module/marketing/**':
+    required: [correctness, security, db_query]
+    hint: 营销模块 — 活动规则单向流转、优惠叠加边界、库存原子扣减
+
+  # LBS / 配送
+  'apps/backend/src/module/lbs/**':
+    required: [security, db_query, resilience]
+    hint: LBS — 第三方接口兜底、缓存降级
+
+  # 通用后端 service（覆盖剩余模块）
+  'apps/backend/src/module/**/*.service.ts':
+    required: [db_query, security]
+    note: 含 export/download/excel 路由时自动追加 backend_performance
+
+  'apps/backend/src/module/**/*.controller.ts':
+    required: [security]
+    note: 含 export/download/excel 路由时自动追加 backend_performance
+
+  # Prisma schema 与迁移（高风险）
+  'apps/backend/prisma/**':
+    required: [correctness, db_query, security]
+    hint: schema 变更 — 必须有 migration + 索引说明 + 回滚方案；新字段必须有默认值或可为 null
+
+  # Prisma 扩展/服务
+  'apps/backend/src/prisma/**':
+    required: [db_query, correctness]
+    hint: >
+      注意 prisma-soft-delete.middleware.ts 使用已废弃 $use API（Prisma 6.14+ 将移除）。
+      新增扩展请使用 $extends 模式，参照 prisma-soft-delete.extension.ts。
+
+  # Redis / 缓存
+  'apps/backend/src/**/*cache*':
+    required: [resilience, backend_performance]
+
+  'apps/backend/src/**/*redis*':
+    required: [resilience]
+
+  # 队列 processor / consumer / worker
+  'apps/backend/src/**/*.processor.ts':
+    required: [correctness, resilience]
+    script: check-queue-contracts
+
+  'apps/backend/src/**/*.consumer.ts':
+    required: [correctness, resilience]
+    script: check-queue-contracts
+
+  # 租户上下文
+  'apps/backend/src/common/tenant/**':
+    required: [correctness, security]
+    hint: 租户隔离核心路径 — 任何改动必须有跨租户拒绝测试
+
+  # 前端 admin-web 页面
+  'apps/admin-web/src/views/**':
+    required: [ux_states, security]
+    note: 新增路由时追加 frontend_bundle 检查
+
+  # 前端 miniapp 页面
+  'apps/miniapp-client/src/pages/**':
+    required: [ux_states, security]
+
+  # 前端请求层（api 目录）
+  'apps/admin-web/src/api/**':
+    required: [security]
+
+  'apps/miniapp-client/src/api/**':
+    required: [security]
+
+  # 共享类型库
+  'libs/common-types/**':
+    required: [correctness, security]
+    hint: 契约变更必须同步 pnpm generate-types，前端不得手写同义 DTO/VO
+
+  # 治理脚本
+  'scripts/**':
+    required: [correctness]
+    hint: 脚本变更后必须跑 pnpm test:scripts
+
+# ─────────────────────────────────────────────
+# 现有脚本清单与升级状态
+# ─────────────────────────────────────────────
+script_inventory:
+  active:
+    - name: check-node-blocking-patterns
+      status: warn-only
+      upgrade_condition: 新增行 violations=0 持续 10 次 CI
+      target: 新增行 fail
+
+    - name: check-redis-blocking
+      status: warn-only
+      upgrade_condition: 新增行 violations=0 持续 10 次 CI
+      target: 新增行 fail
+
+    - name: check-export-limits
+      status: warn-only
+      upgrade_condition: 新增导出路由覆盖率 100%
+      target: 新增路由 fail
+
+    - name: check-queue-contracts
+      status: warn-only
+      upgrade_condition: 所有新 processor 合规
+      target: 新增文件 fail
+
+    - name: check-test-spec-coverage
+      status: warn-only
+      upgrade_condition: 待定
+      target: 新增 spec 文件 fail
+
+  pending:
+    - name: check-admin-bundle-budget
+      priority: P1
+      description: 扫描 dist/assets/*.js，禁止名单包进首屏 chunk
+      no_install_required: true
+
+    - name: prisma-pagination-extension
+      priority: P1
+      description: $extends.$allModels.findMany，开发环境 warn 无 take 的查询
+      no_install_required: true
+      note: Prisma 6.7.0 已支持 $extends query，无需升级
+
+    - name: prisma-soft-delete-write-extension
+      priority: P2
+      description: 迁移 $use 软删 WRITE 侧到 $extends，升级 Prisma 6.14+ 前必须完成
+      no_install_required: true

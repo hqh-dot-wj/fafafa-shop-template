@@ -1,0 +1,52 @@
+import { request } from '@/service/request';
+
+/** Get Brand List */
+export function fetchGetBrandList(params?: Api.Pms.BrandSearchParams) {
+  return request<Api.Pms.BrandList>({
+    url: '/admin/pms/brand/list',
+    method: 'get',
+    params,
+  });
+}
+
+/** Get Brand Detail */
+export function fetchGetBrand(id: number) {
+  return request<Api.Pms.Brand>({
+    url: `/admin/pms/brand/${id}`,
+    method: 'get',
+  });
+}
+
+/** Add Brand */
+export function fetchAddBrand(data: Api.Pms.BrandOperateParams) {
+  return request<Api.Pms.Brand>({
+    url: '/admin/pms/brand',
+    method: 'post',
+    data,
+  });
+}
+
+/** Update Brand */
+export function fetchUpdateBrand(data: Api.Pms.BrandOperateParams) {
+  return request<Api.Pms.Brand>({
+    url: `/admin/pms/brand/${data.brandId}`,
+    method: 'put',
+    data,
+  });
+}
+
+/** Delete Brand */
+export function fetchDeleteBrand(id: number) {
+  return request<boolean>({
+    url: `/admin/pms/brand/${id}`,
+    method: 'delete',
+  });
+}
+
+/** Batch Delete Brand */
+export function fetchBatchDeleteBrand(ids: number[]) {
+  return request<Api.Store.BatchOperationResult>({
+    url: `/admin/pms/brand/batch/${ids.join(',')}`,
+    method: 'delete',
+  });
+}

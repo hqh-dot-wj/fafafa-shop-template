@@ -1,0 +1,88 @@
+import type { OrchestrationWorkflow } from '../types';
+
+export const CAMPAIGN_CREATE_WORKFLOW: OrchestrationWorkflow = {
+  code: 'CAMPAIGN_CREATE',
+  name: '创建营销活动',
+  entryNode: 'select-type',
+  exitNode: 'publish',
+  nodes: [
+    {
+      id: 'select-type',
+      label: '选择活动类型',
+      required: true,
+      schema: { source: 'static', schemaId: 'campaign-type-select' },
+    },
+    {
+      id: 'basic-info',
+      label: '基础信息',
+      required: true,
+      schema: { source: 'static', schemaId: 'campaign-basic-info' },
+    },
+    {
+      id: 'policy-config',
+      label: '配置策略',
+      branchGroup: 'POLICY',
+      required: true,
+      schema: { source: 'campaign-policy', contextRef: 'campaign.type' },
+    },
+    {
+      id: 'handler-light-audience',
+      label: '配置目标人群',
+      branchGroup: 'HANDLER_LIGHT',
+      required: true,
+      schema: { source: 'static', schemaId: 'audience-form' },
+    },
+    {
+      id: 'handler-light-rewards',
+      label: '配置奖励',
+      branchGroup: 'HANDLER_LIGHT',
+      required: true,
+      schema: { source: 'static', schemaId: 'rewards-form' },
+    },
+    {
+      id: 'handler-heavy-rules',
+      label: '配置玩法规则',
+      branchGroup: 'HANDLER_HEAVY',
+      required: true,
+      schema: { source: 'play-rule', contextRef: 'campaign.type' },
+    },
+    {
+      id: 'link-products',
+      label: '关联商品/门店',
+      required: true,
+      schema: { source: 'static', schemaId: 'product-store-link' },
+    },
+    { id: 'precheck', label: '预检', required: true, schema: { source: 'static', schemaId: 'precheck-summary' } },
+    { id: 'publish', label: '预览与发布', required: true, schema: { source: 'static', schemaId: 'publish-confirm' } },
+  ],
+  edges: [
+    { from: 'select-type', to: 'basic-info', highlightOnComplete: true },
+    { from: 'basic-info', to: 'policy-config', highlightOnComplete: true },
+    { from: 'basic-info', to: 'handler-light-audience', highlightOnComplete: true },
+    { from: 'basic-info', to: 'handler-heavy-rules', highlightOnComplete: true },
+    { from: 'handler-light-audience', to: 'handler-light-rewards', highlightOnComplete: true },
+    { from: 'policy-config', to: 'link-products', highlightOnComplete: true },
+    { from: 'handler-light-rewards', to: 'link-products', highlightOnComplete: true },
+    { from: 'handler-heavy-rules', to: 'link-products', highlightOnComplete: true },
+    { from: 'link-products', to: 'precheck', highlightOnComplete: true },
+    { from: 'precheck', to: 'publish', highlightOnComplete: true },
+  ],
+  branchRules: [
+    {
+      decidedBy: 'select-type',
+      field: 'type',
+      routes: {
+        FIRST_ORDER: 'POLICY',
+        FULL_REDUCTION: 'POLICY',
+        MEMBER_DAY: 'POLICY',
+        PROMOTION_PRICE: 'POLICY',
+        BIRTHDAY: 'POLICY',
+        NEWCOMER_EXCLUSIVE: 'HANDLER_LIGHT',
+        DISTRIBUTION_GROWTH: 'HANDLER_LIGHT',
+        COURSE_GROUP_BUY: 'HANDLER_HEAVY',
+        FLASH_SALE: 'HANDLER_HEAVY',
+        MEMBER_UPGRADE: 'HANDLER_HEAVY',
+      },
+    },
+  ],
+};

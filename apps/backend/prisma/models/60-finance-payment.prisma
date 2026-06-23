@@ -1,0 +1,837 @@
+// Finance, wallet, commission, withdrawal, settlement, payment, and reconciliation schema.
+
+// ==========================================
+// 📌 财务系统枚举
+// ==========================================
+
+/// 交易类型
+enum TransType {
+  COMMISSION_IN // 佣金入账
+  WITHDRAW_OUT // 提现扣款
+  REFUND_DEDUCT // 退款倒扣
+  CONSUME_PAY // 余额支付
+  RECHARGE_IN // 充值(预留)
+  DEBT_RECOVERY // 待回收抵扣（结算时用于抵扣历史欠款，与 COMMISSION_IN 配对出现）
+}
+
+/// 佣金状态
+enum CommissionStatus {
+  FROZEN // 冻结中
+  SETTLED // 已结算
+  CANCELLED // 已取消
+}
+
+/// 提现状态
+enum WithdrawalStatus {
+  PENDING // 待审核
+  PROCESSING // 打款处理中
+  APPROVED // 已通过
+  REJECTED // 已驳回
+  FAILED // 打款失败
+}
+
+/// 结算配置状态
+enum SettlementProfileStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
+}
+
+/// 结算通道类型
+enum SettlementChannelType {
+  WECHAT_PROFITSHARING
+  WECHAT_TRANSFER
+  BANK_TRANSFER
+  OFFLINE_TRANSFER
+}
+
+/// 结算接收方类型
+enum SettlementReceiverType {
+  TENANT
+  MEMBER
+  MERCHANT
+  BANK_ACCOUNT
+}
+
+/// 支付单状态
+enum PaymentRecordStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+  CLOSED
+}
+
+/// 退款事实源状态
+enum FinRefundStatus {
+  CREATED
+  PROCESSING
+  SUCCESS
+  FAILED
+  CLOSED
+  ABNORMAL
+}
+
+/// 退款类型
+enum FinRefundType {
+  FULL
+  PARTIAL
+  AUTO_CANCEL
+}
+
+/// 退款事件类型
+enum FinRefundEventType {
+  REQUEST
+  SYNC_RESPONSE
+  NOTIFY
+  QUERY
+  MANUAL
+}
+
+/// 应结算单状态
+enum SettlementBillStatus {
+  INIT
+  PENDING_REVIEW
+  REJECTED
+  APPROVED
+  EXECUTING
+  SUCCESS
+  FAILED
+  RECONCILING
+  CLOSED
+}
+
+/// 结算执行状态
+enum SettlementExecutionStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CLOSED
+}
+
+/// 结算调整类型
+enum SettlementAdjustmentType {
+  REFUND_DEDUCT
+  COMMISSION_ROLLBACK
+  FEE_ADJUST
+}
+
+/// 结算调整状态
+enum SettlementAdjustmentStatus {
+  PENDING
+  CONFIRMED
+  SETTLED
+  CLOSED
+}
+
+/// 对账状态
+enum ReconciliationStatus {
+  WAITING
+  MATCHED
+  UNMATCHED
+  HANDLED
+}
+
+/// 对账业务范围
+enum ReconciliationBizScope {
+  PAYMENT
+  REFUND
+  SETTLEMENT
+  WITHDRAWAL
+}
+
+/// 渠道账单导入批次状态
+enum StatementBatchStatus {
+  INIT
+  NORMALIZED
+  FAILED
+}
+
+/// 对账批次状态
+enum ReconciliationBatchStatus {
+  INIT
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// 对账结果状态
+enum ReconciliationResultStatus {
+  MATCHED
+  UNMATCHED
+  BUFFERED
+  IGNORED
+}
+
+/// 对账缓冲池状态
+enum ReconciliationBufferStatus {
+  WAITING
+  RECHECKING
+  MATCHED
+  EXPIRED
+  IGNORED
+}
+
+// ==========================================
+// 📌 财务中心表
+// ==========================================
+
+/// 租户结算配置表
+model FinTenantSettlementProfile {
+  id       String @id @default(uuid())
+  tenantId String @unique @map("tenant_id")
+
+  enabled          Boolean                 @default(false)
+  defaultChannel   SettlementChannelType   @default(OFFLINE_TRANSFER) @map("default_channel")
+  receiverType     SettlementReceiverType  @default(TENANT) @map("receiver_type")
+  receiverAccount  String?                 @map("receiver_account") @db.VarChar(100)
+  receiverName     String?                 @map("receiver_name") @db.VarChar(100)
+  bankName         String?                 @map("bank_name") @db.VarChar(100)
+  bankAccountNo    String?                 @map("bank_account_no") @db.VarChar(100)
+  needManualReview Boolean                 @default(true) @map("need_manual_review")
+  status           SettlementProfileStatus @default(DRAFT)
+  remark           String?                 @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  tenant SysTenant @relation(fields: [tenantId], references: [tenantId])
+
+  @@index([tenantId, status])
+  @@map("fin_tenant_settlement_profile")
+}
+
+/// 支付单表
+model PayOrderRecord {
+  id       String @id @default(cuid())
+  orderId  String @unique @map("order_id")
+  orderSn  String @map("order_sn")
+  tenantId String @map("tenant_id")
+
+  channelType   String              @map("channel_type") @db.VarChar(30)
+  transactionId String?             @map("transaction_id") @db.VarChar(64)
+  payAmount     Decimal             @map("pay_amount") @db.Decimal(10, 2)
+  status        PaymentRecordStatus @default(PENDING)
+  payTime       DateTime?           @map("pay_time")
+  rawPayload    Json?               @map("raw_payload")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  order          OmsOrder           @relation(fields: [orderId], references: [id])
+  settlementBill FinSettlementBill?
+
+  @@index([tenantId, status])
+  @@index([orderSn])
+  @@map("pay_order_record")
+}
+
+/// 退款事实源表
+model FinRefund {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  orderId  String @map("order_id")
+  orderSn  String @map("order_sn") @db.VarChar(100)
+
+  refundSn    String          @unique @map("refund_sn") @db.VarChar(100)
+  refundId    String?         @map("refund_id") @db.VarChar(100)
+  channelType String          @default("WECHAT") @map("channel_type") @db.VarChar(30)
+  status      FinRefundStatus @default(CREATED)
+  refundType  FinRefundType   @map("refund_type")
+
+  requestedAmount        Decimal  @map("requested_amount") @db.Decimal(10, 2)
+  payerRefundAmount      Decimal? @map("payer_refund_amount") @db.Decimal(10, 2)
+  settlementRefundAmount Decimal? @map("settlement_refund_amount") @db.Decimal(10, 2)
+  refundFeeAmount        Decimal  @default(0) @map("refund_fee_amount") @db.Decimal(10, 2)
+  discountRefundAmount   Decimal  @default(0) @map("discount_refund_amount") @db.Decimal(10, 2)
+  payerTotalAmount       Decimal? @map("payer_total_amount") @db.Decimal(10, 2)
+  settlementTotalAmount  Decimal? @map("settlement_total_amount") @db.Decimal(10, 2)
+
+  fundsAccount String? @map("funds_account") @db.VarChar(50)
+  reason       String? @db.VarChar(500)
+  failReason   String? @map("fail_reason") @db.VarChar(500)
+
+  successTime     DateTime? @map("success_time")
+  lastQueryTime   DateTime? @map("last_query_time")
+  retryCount      Int       @default(0) @map("retry_count")
+  rawPayload      Json?     @map("raw_payload")
+  finalizePayload Json?     @map("finalize_payload")
+  finalizedAt     DateTime? @map("finalized_at")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  order                 OmsOrder                  @relation(fields: [orderId], references: [id])
+  events                FinRefundEvent[]
+  settlementAdjustments FinSettlementAdjustment[]
+
+  @@index([tenantId, status])
+  @@index([orderId, status])
+  @@index([refundId])
+  @@map("fin_refund")
+}
+
+/// 退款状态事件表
+model FinRefundEvent {
+  id             String             @id @default(cuid())
+  refundRecordId String             @map("refund_record_id")
+  eventType      FinRefundEventType @map("event_type")
+  fromStatus     FinRefundStatus?   @map("from_status")
+  toStatus       FinRefundStatus    @map("to_status")
+  payload        Json?
+  operator       String?            @db.VarChar(100)
+  createTime     DateTime           @default(now()) @map("create_time")
+
+  refund FinRefund @relation(fields: [refundRecordId], references: [id], onDelete: Cascade)
+
+  @@index([refundRecordId, createTime])
+  @@index([eventType, createTime])
+  @@map("fin_refund_event")
+}
+
+/// 用户钱包表
+model FinWallet {
+  id       String @id @default(uuid())
+  memberId String @unique @map("member_id")
+  tenantId String @map("tenant_id")
+
+  // 三资产
+  balance         Decimal @default(0) @db.Decimal(12, 2) // 可用余额
+  frozen          Decimal @default(0) @db.Decimal(12, 2) // 冻结余额
+  totalIncome     Decimal @default(0) @db.Decimal(12, 2) // 累计收益
+  pendingRecovery Decimal @default(0) @map("pending_recovery") @db.Decimal(12, 2) // 待回收余额（佣金回滚时余额不足）
+
+  // W-T9: 钱包状态（用于冻结异常用户）
+  status       WalletStatus @default(NORMAL)
+  frozenReason String?      @map("frozen_reason") @db.VarChar(200) // 冻结原因
+  frozenAt     DateTime?    @map("frozen_at") // 冻结时间
+  frozenBy     String?      @map("frozen_by") // 冻结操作人
+
+  // 安全
+  payPassword String? @map("pay_password")
+  version     Int     @default(0) // 乐观锁
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  member       UmsMember        @relation(fields: [memberId], references: [memberId])
+  transactions FinTransaction[]
+
+  @@index([tenantId, memberId])
+  @@index([tenantId, status])
+  @@map("fin_wallet")
+}
+
+/// 钱包流水表 (不可篡改的账本)
+model FinTransaction {
+  id       BigInt @id @default(autoincrement())
+  walletId String @map("wallet_id")
+  tenantId String @map("tenant_id")
+
+  type         TransType
+  amount       Decimal   @db.Decimal(12, 2) // 可正可负
+  balanceAfter Decimal   @db.Decimal(12, 2) // 交易后余额快照
+
+  relatedId String  @map("related_id") // 关联业务ID
+  remark    String? @db.VarChar(200)
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  wallet FinWallet @relation(fields: [walletId], references: [id])
+
+  // 幂等约束：同一钱包同一业务ID同一类型只允许一条流水，防止 Bull 重试时重复入账
+  @@unique([walletId, relatedId, type])
+  @@index([walletId, createTime])
+  @@index([tenantId, type])
+  @@map("fin_transaction")
+}
+
+/// 佣金记录表 (在途资金)
+/// 说明: 佣金分配比例从 SysDistConfig 表按 tenantId 获取
+/// 计算流程: order.tenantId → SysDistConfig.tenantId → level1Rate/level2Rate
+model FinCommission {
+  id       BigInt @id @default(autoincrement())
+  orderId  String @map("order_id")
+  tenantId String @map("tenant_id")
+
+  // [新增] 关联订单明细ID，支持部分退款按商品回收佣金
+  orderItemId Int? @map("order_item_id")
+
+  // --- 活动佣金关联 ---
+  activityType                   String?  @map("activity_type")
+  activityConfigId               String?  @map("activity_config_id")
+  playInstanceId                 String?  @map("play_instance_id")
+  commissionRuleSource           String?  @map("commission_rule_source")
+  activityCommissionRateSnapshot Decimal? @map("activity_commission_rate_snapshot") @db.Decimal(5, 2)
+  commissionPoolSnapshot         Decimal? @map("commission_pool_snapshot") @db.Decimal(10, 2)
+
+  beneficiaryId String  @map("beneficiary_id") // 受益人
+  level         Int // 1=一级(直推), 2=二级(间推)
+  amount        Decimal @db.Decimal(10, 2)
+
+  // 原始佣金金额：用于多次部分退款累计扣减的幂等基准。
+  // 创建时与 amount 同值；后续 cancelCommissionsForPartialRefund 一律按 originalAmount × ratio 算应扣。
+  // 历史数据为 null 时应用层 fallback 到 amount（这些佣金都已进入终态，不会再触发部分退款）。
+  originalAmount Decimal? @map("original_amount") @db.Decimal(10, 2)
+
+  // 分佣比例快照 (记录当时的比例，防止配置修改后对账不准)
+  rateSnapshot Decimal @default(0) @map("rate_snapshot") @db.Decimal(5, 2)
+
+  // === 佣金计算详情（用于审计和对账） ===
+  commissionBase     Decimal             @map("commission_base") @db.Decimal(10, 2) // 分佣基数
+  commissionBaseType CommissionBaseType? @map("commission_base_type") // 基数类型快照
+  orderOriginalPrice Decimal?            @map("order_original_price") @db.Decimal(10, 2) // 订单原价
+  orderActualPaid    Decimal?            @map("order_actual_paid") @db.Decimal(10, 2) // 订单实付
+  couponDiscount     Decimal?            @default(0) @map("coupon_discount") @db.Decimal(10, 2) // 优惠券抵扣
+  pointsDiscount     Decimal?            @default(0) @map("points_discount") @db.Decimal(10, 2) // 积分抵扣
+  isCapped           Boolean             @default(false) @map("is_capped") // 是否触发熔断
+
+  status CommissionStatus @default(FROZEN)
+
+  createTime     DateTime  @default(now()) @map("create_time")
+  planSettleTime DateTime  @map("plan_settle_time") // 计划解冻时间
+  settleTime     DateTime? @map("settle_time") // 实际解冻时间
+
+  isCrossTenant Boolean @default(false) @map("is_cross_tenant") // 是否跨店佣金
+
+  beneficiary UmsMember @relation(fields: [beneficiaryId], references: [memberId])
+
+  order OmsOrder @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, beneficiaryId, level]) // 防重复
+  @@index([orderId])
+  @@index([beneficiaryId, status])
+  @@index([tenantId, status, planSettleTime]) // 定时任务索引
+  @@index([orderItemId]) // 支持按商品查询
+  @@map("fin_commission")
+}
+
+/// 用户每日配额表 (用于跨店限额并发控制)
+/// 说明: 使用专门的计数器表，避免 SELECT SUM FOR UPDATE 的首笔并发漏洞
+model FinUserDailyQuota {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  beneficiaryId String   @map("beneficiary_id")
+  quotaDate     DateTime @map("quota_date") @db.Date
+  usedAmount    Decimal  @default(0) @map("used_amount") @db.Decimal(10, 2)
+  limitAmount   Decimal  @map("limit_amount") @db.Decimal(10, 2)
+  createTime    DateTime @default(now()) @map("create_time")
+  updateTime    DateTime @updatedAt @map("update_time")
+
+  @@unique([tenantId, beneficiaryId, quotaDate])
+  @@index([tenantId, beneficiaryId, quotaDate])
+  @@map("fin_user_daily_quota")
+}
+
+/// 提现记录表
+model FinWithdrawal {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  memberId String @map("member_id")
+
+  amount       Decimal  @db.Decimal(10, 2) // 申请金额
+  fee          Decimal  @default(0) @db.Decimal(10, 2) // 手续费
+  actualAmount Decimal? @map("actual_amount") @db.Decimal(10, 2) // 实际到账金额
+  method       String // WECHAT_WALLET, BANK_CARD
+
+  // 账号快照
+  accountNo String?
+  realName  String?
+
+  status WithdrawalStatus @default(PENDING)
+
+  // 重试相关
+  retryCount Int @default(0) @map("retry_count") // 打款重试次数
+
+  auditTime   DateTime? @map("audit_time")
+  auditBy     String?   @map("audit_by")
+  auditRemark String?   @map("audit_remark")
+
+  // 打款凭证
+  paymentNo  String? @map("payment_no") // 微信流水号
+  failReason String? @map("fail_reason")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  member UmsMember @relation(fields: [memberId], references: [memberId])
+
+  @@index([tenantId, status])
+  @@index([memberId, createTime])
+  @@map("fin_withdrawal")
+}
+
+/// 结算日志表 (S-T8)
+model FinSettlementLog {
+  id       BigInt @id @default(autoincrement())
+  tenantId String @map("tenant_id")
+  batchId  String @map("batch_id") // 批次ID
+
+  settledCount Int     @map("settled_count")
+  failedCount  Int     @map("failed_count")
+  totalAmount  Decimal @map("total_amount") @db.Decimal(12, 2)
+
+  startTime  DateTime @map("start_time")
+  endTime    DateTime @map("end_time")
+  durationMs Int      @map("duration_ms") // 执行耗时(毫秒)
+
+  triggerType  String  @map("trigger_type") // SCHEDULED, MANUAL
+  errorDetails String? @map("error_details") @db.Text // 失败详情 JSON
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  @@index([tenantId, createTime])
+  @@index([batchId])
+  @@map("fin_settlement_log")
+}
+
+/// 应结算单主表
+model FinSettlementBill {
+  id       String @id @default(cuid())
+  billNo   String @unique @map("bill_no")
+  orderId  String @unique @map("order_id")
+  tenantId String @map("tenant_id")
+
+  payRecordId String? @unique @map("pay_record_id")
+
+  totalAmount       Decimal               @map("total_amount") @db.Decimal(10, 2)
+  platformAmount    Decimal               @default(0) @map("platform_amount") @db.Decimal(10, 2)
+  storeAmount       Decimal               @default(0) @map("store_amount") @db.Decimal(10, 2)
+  commissionAmount  Decimal               @default(0) @map("commission_amount") @db.Decimal(10, 2)
+  crossTenantAmount Decimal               @default(0) @map("cross_tenant_amount") @db.Decimal(10, 2)
+  channelType       SettlementChannelType @map("channel_type")
+  status            SettlementBillStatus  @default(INIT)
+  remark            String?               @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  order       OmsOrder                  @relation(fields: [orderId], references: [id])
+  payRecord   PayOrderRecord?           @relation(fields: [payRecordId], references: [id])
+  items       FinSettlementBillItem[]
+  audits      FinSettlementAuditLog[]
+  executions  FinSettlementExecution[]
+  adjustments FinSettlementAdjustment[]
+
+  @@index([tenantId, status])
+  @@index([payRecordId])
+  @@map("fin_settlement_bill")
+}
+
+/// 结算调整单。退款命中锁定结算单时只记录 delta，不回写历史结算单。
+model FinSettlementAdjustment {
+  id           String @id @default(cuid())
+  adjustmentNo String @unique @map("adjustment_no") @db.VarChar(100)
+  tenantId     String @map("tenant_id")
+  orderId      String @map("order_id")
+
+  refundRecordId   String  @unique @map("refund_record_id")
+  settlementBillId String? @map("settlement_bill_id")
+
+  adjustmentType SettlementAdjustmentType   @default(REFUND_DEDUCT) @map("adjustment_type")
+  status         SettlementAdjustmentStatus @default(PENDING)
+
+  storeAmountDelta      Decimal @default(0) @map("store_amount_delta") @db.Decimal(10, 2)
+  commissionAmountDelta Decimal @default(0) @map("commission_amount_delta") @db.Decimal(10, 2)
+  platformAmountDelta   Decimal @default(0) @map("platform_amount_delta") @db.Decimal(10, 2)
+  feeAmountDelta        Decimal @default(0) @map("fee_amount_delta") @db.Decimal(10, 2)
+
+  reason     String? @db.VarChar(500)
+  rawPayload Json?   @map("raw_payload")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  tenant         SysTenant          @relation(fields: [tenantId], references: [tenantId])
+  order          OmsOrder           @relation(fields: [orderId], references: [id])
+  refund         FinRefund          @relation(fields: [refundRecordId], references: [id])
+  settlementBill FinSettlementBill? @relation(fields: [settlementBillId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([orderId])
+  @@index([settlementBillId])
+  @@index([createTime])
+  @@map("fin_settlement_adjustment")
+}
+
+/// 应结算单明细表
+model FinSettlementBillItem {
+  id       String @id @default(cuid())
+  billId   String @map("bill_id")
+  tenantId String @map("tenant_id")
+
+  receiverType SettlementReceiverType @map("receiver_type")
+  receiverId   String                 @map("receiver_id")
+  receiverName String?                @map("receiver_name") @db.VarChar(100)
+  channelType  SettlementChannelType  @map("channel_type")
+  amount       Decimal                @db.Decimal(10, 2)
+  reason       String?                @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  bill FinSettlementBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+  @@index([tenantId, receiverType])
+  @@map("fin_settlement_bill_item")
+}
+
+/// 结算审核日志表
+model FinSettlementAuditLog {
+  id       String @id @default(cuid())
+  billId   String @map("bill_id")
+  tenantId String @map("tenant_id")
+
+  action  String  @db.VarChar(30)
+  auditBy String  @map("audit_by") @db.VarChar(50)
+  remark  String? @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  bill FinSettlementBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId, createTime])
+  @@index([tenantId, createTime])
+  @@map("fin_settlement_audit_log")
+}
+
+/// 结算执行单
+model FinSettlementExecution {
+  id       String @id @default(cuid())
+  billId   String @map("bill_id")
+  tenantId String @map("tenant_id")
+
+  executeNo       String                    @unique @map("execute_no")
+  channelType     SettlementChannelType     @map("channel_type")
+  status          SettlementExecutionStatus @default(PENDING)
+  externalNo      String?                   @map("external_no") @db.VarChar(100)
+  requestPayload  Json?                     @map("request_payload")
+  responsePayload Json?                     @map("response_payload")
+  failureReason   String?                   @map("failure_reason") @db.VarChar(500)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  bill FinSettlementBill           @relation(fields: [billId], references: [id], onDelete: Cascade)
+  logs FinSettlementExecutionLog[]
+
+  @@index([billId, status])
+  @@index([tenantId, channelType, status])
+  @@map("fin_settlement_execution")
+}
+
+/// 结算执行日志
+model FinSettlementExecutionLog {
+  id          String @id @default(cuid())
+  executionId String @map("execution_id")
+  tenantId    String @map("tenant_id")
+
+  stage   String @db.VarChar(50)
+  message String @db.VarChar(500)
+  payload Json?
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  execution FinSettlementExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createTime])
+  @@index([tenantId, createTime])
+  @@map("fin_settlement_execution_log")
+}
+
+/// 对账异常表
+model FinReconciliationIssue {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  batchId       String?                 @map("batch_id")
+  resultId      String?                 @map("result_id")
+  bizScope      ReconciliationBizScope? @map("biz_scope")
+  channelType   String?                 @map("channel_type") @db.VarChar(30)
+  localBizId    String?                 @map("local_biz_id") @db.VarChar(100)
+  localBizNo    String?                 @map("local_biz_no") @db.VarChar(100)
+  channelBizNo  String?                 @map("channel_biz_no") @db.VarChar(100)
+  transactionId String?                 @map("transaction_id") @db.VarChar(64)
+  orderId       String?                 @map("order_id")
+  billId        String?                 @map("bill_id")
+  executionId   String?                 @map("execution_id")
+  issueType     String                  @map("issue_type") @db.VarChar(50)
+  status        ReconciliationStatus    @default(WAITING)
+  diffAmount    Decimal?                @map("diff_amount") @db.Decimal(10, 2)
+
+  issueReason   String?   @map("issue_reason") @db.VarChar(500)
+  handledBy     String?   @map("handled_by") @db.VarChar(50)
+  handledRemark String?   @map("handled_remark") @db.VarChar(500)
+  handledTime   DateTime? @map("handled_time")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@index([tenantId, status])
+  @@index([batchId])
+  @@index([resultId])
+  @@index([bizScope, channelType, status])
+  @@index([localBizNo])
+  @@index([transactionId])
+  @@index([orderId])
+  @@index([billId])
+  @@index([executionId])
+  @@map("fin_reconciliation_issue")
+}
+
+/// 渠道账单导入批次
+model FinChannelStatementBatch {
+  id            String                 @id @default(cuid())
+  statementDate DateTime               @map("statement_date") @db.Date
+  bizScope      ReconciliationBizScope @map("biz_scope")
+  channelType   String                 @map("channel_type") @db.VarChar(30)
+  status        StatementBatchStatus   @default(INIT)
+  sourceType    String                 @default("GENERATED") @map("source_type") @db.VarChar(30)
+  fileName      String?                @map("file_name") @db.VarChar(200)
+  importedCount Int                    @default(0) @map("imported_count")
+  failedCount   Int                    @default(0) @map("failed_count")
+  remark        String?                @db.VarChar(500)
+  rawPayload    Json?                  @map("raw_payload")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  lines                 FinChannelStatementLine[]
+  reconciliationBatches FinReconciliationBatch[]
+
+  @@index([statementDate, bizScope, channelType])
+  @@index([status])
+  @@map("fin_channel_statement_batch")
+}
+
+/// 渠道账单标准化明细
+model FinChannelStatementLine {
+  id                     String                 @id @default(cuid())
+  batchId                String                 @map("batch_id")
+  statementDate          DateTime               @map("statement_date") @db.Date
+  tenantId               String?                @map("tenant_id")
+  bizScope               ReconciliationBizScope @map("biz_scope")
+  channelType            String                 @map("channel_type") @db.VarChar(30)
+  transactionId          String?                @map("transaction_id") @db.VarChar(64)
+  externalNo             String?                @map("external_no") @db.VarChar(100)
+  outBizNo               String?                @map("out_biz_no") @db.VarChar(100)
+  amount                 Decimal                @db.Decimal(10, 2)
+  amountKind             String                 @default("PAYMENT") @map("amount_kind") @db.VarChar(30)
+  payerRefundAmount      Decimal?               @map("payer_refund_amount") @db.Decimal(10, 2)
+  settlementRefundAmount Decimal?               @map("settlement_refund_amount") @db.Decimal(10, 2)
+  refundFeeAmount        Decimal?               @map("refund_fee_amount") @db.Decimal(10, 2)
+  discountRefundAmount   Decimal?               @map("discount_refund_amount") @db.Decimal(10, 2)
+  netAmount              Decimal?               @map("net_amount") @db.Decimal(10, 2)
+  currency               String                 @default("CNY") @db.VarChar(10)
+  status                 String                 @db.VarChar(30)
+  tradeTime              DateTime?              @map("trade_time")
+  rawPayload             Json?                  @map("raw_payload")
+
+  createTime DateTime @default(now()) @map("create_time")
+
+  batch FinChannelStatementBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([statementDate, bizScope, channelType])
+  @@index([transactionId])
+  @@index([outBizNo])
+  @@map("fin_channel_statement_line")
+}
+
+/// 对账批次
+model FinReconciliationBatch {
+  id               String                    @id @default(cuid())
+  statementBatchId String?                   @map("statement_batch_id")
+  batchDate        DateTime                  @map("batch_date") @db.Date
+  bizScope         ReconciliationBizScope    @map("biz_scope")
+  channelType      String                    @map("channel_type") @db.VarChar(30)
+  status           ReconciliationBatchStatus @default(INIT)
+  totalCount       Int                       @default(0) @map("total_count")
+  matchedCount     Int                       @default(0) @map("matched_count")
+  unmatchedCount   Int                       @default(0) @map("unmatched_count")
+  bufferedCount    Int                       @default(0) @map("buffered_count")
+  ignoredCount     Int                       @default(0) @map("ignored_count")
+  remark           String?                   @db.VarChar(500)
+  startedAt        DateTime?                 @map("started_at")
+  finishedAt       DateTime?                 @map("finished_at")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  statementBatch FinChannelStatementBatch? @relation(fields: [statementBatchId], references: [id])
+  results        FinReconciliationResult[]
+
+  @@index([statementBatchId])
+  @@index([batchDate, bizScope, channelType])
+  @@index([status])
+  @@map("fin_reconciliation_batch")
+}
+
+/// 对账逐笔结果
+model FinReconciliationResult {
+  id                     String                     @id @default(cuid())
+  batchId                String                     @map("batch_id")
+  bizScope               ReconciliationBizScope     @map("biz_scope")
+  tenantId               String?                    @map("tenant_id")
+  channelType            String                     @map("channel_type") @db.VarChar(30)
+  localBizId             String?                    @map("local_biz_id") @db.VarChar(100)
+  localBizNo             String?                    @map("local_biz_no") @db.VarChar(100)
+  channelBizNo           String?                    @map("channel_biz_no") @db.VarChar(100)
+  transactionId          String?                    @map("transaction_id") @db.VarChar(64)
+  localAmount            Decimal?                   @map("local_amount") @db.Decimal(10, 2)
+  channelAmount          Decimal?                   @map("channel_amount") @db.Decimal(10, 2)
+  diffAmount             Decimal?                   @map("diff_amount") @db.Decimal(10, 2)
+  localAmountBreakdown   Json?                      @map("local_amount_breakdown")
+  channelAmountBreakdown Json?                      @map("channel_amount_breakdown")
+  status                 ReconciliationResultStatus @default(MATCHED)
+  reasonCode             String?                    @map("reason_code") @db.VarChar(50)
+  reasonText             String?                    @map("reason_text") @db.VarChar(500)
+  issueId                String?                    @map("issue_id")
+  bufferId               String?                    @map("buffer_id")
+  matchedAt              DateTime?                  @map("matched_at")
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  batch FinReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, status])
+  @@index([tenantId, status])
+  @@index([localBizNo])
+  @@index([transactionId])
+  @@map("fin_reconciliation_result")
+}
+
+/// 对账缓冲池
+model FinReconciliationBuffer {
+  id            String                     @id @default(cuid())
+  bizScope      ReconciliationBizScope     @map("biz_scope")
+  channelType   String                     @map("channel_type") @db.VarChar(30)
+  tenantId      String?                    @map("tenant_id")
+  localBizId    String?                    @map("local_biz_id") @db.VarChar(100)
+  localBizNo    String?                    @map("local_biz_no") @db.VarChar(100)
+  channelBizNo  String?                    @map("channel_biz_no") @db.VarChar(100)
+  transactionId String?                    @map("transaction_id") @db.VarChar(64)
+  reasonCode    String                     @map("reason_code") @db.VarChar(50)
+  reasonText    String?                    @map("reason_text") @db.VarChar(500)
+  firstSeenAt   DateTime                   @map("first_seen_at")
+  nextCheckAt   DateTime                   @map("next_check_at")
+  expireAt      DateTime                   @map("expire_at")
+  retryCount    Int                        @default(0) @map("retry_count")
+  status        ReconciliationBufferStatus @default(WAITING)
+
+  createTime DateTime @default(now()) @map("create_time")
+  updateTime DateTime @updatedAt @map("update_time")
+
+  @@index([bizScope, channelType, status])
+  @@index([tenantId, status])
+  @@index([nextCheckAt])
+  @@map("fin_reconciliation_buffer")
+}
+
+/// 钱包状态枚举
+enum WalletStatus {
+  NORMAL // 正常
+  FROZEN // 冻结
+  DISABLED // 禁用
+}

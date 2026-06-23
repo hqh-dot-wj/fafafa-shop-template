@@ -1,0 +1,109 @@
+import { Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import { Prisma, SysJob } from '@prisma/client';
+import { BaseRepository } from 'src/common/repository/base.repository';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { StatusEnum } from 'src/common/enum';
+
+/**
+ * 定时任务仓储层
+ *
+ * @description 封装定时任务的数据访问逻辑
+ */
+@Injectable()
+export class JobRepository extends BaseRepository<
+  SysJob,
+  Prisma.SysJobCreateInput,
+  Prisma.SysJobUpdateInput,
+  Prisma.SysJobDelegate
+> {
+  constructor(prisma: PrismaService, cls: ClsService) {
+    super(prisma, cls, 'sysJob');
+  }
+
+  /**
+   * 分页查询任务列表
+   */
+  async findPageWithFilter(
+    where: Prisma.SysJobWhereInput,
+    skip: number,
+    take: number,
+    orderBy?: Prisma.SysJobOrderByWithRelationInput,
+  ): Promise<{ list: SysJob[]; total: number }> {
+    const scopedWhere = this.scopeReadWhere(where as object) as Prisma.SysJobWhereInput;
+    const [list, total] = await this.prisma.$transaction([
+      this.delegate.findMany({
+        where: scopedWhere,
+        skip,
+        take,
+        orderBy: orderBy || { createTime: 'desc' },
+      }),
+      this.delegate.count({ where: scopedWhere }),
+    ]);
+
+    return { list, total };
+  }
+
+  /**
+   * 查询所有正常状态的任务（用于启动时初始化）
+   */
+  async findAllActiveJobs(): Promise<SysJob[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({ status: StatusEnum.NORMAL }) as Prisma.SysJobWhereInput,
+      orderBy: { createTime: 'desc' },
+    });
+  }
+
+  /**
+   * 根据任务名称查询
+   */
+  async findByJobName(jobName: string): Promise<SysJob | null> {
+    return this.delegate.findFirst({
+      where: this.scopeReadWhere({ jobName }) as Prisma.SysJobWhereInput,
+    });
+  }
+
+  /**
+   * 根据任务组查询
+   */
+  async findByJobGroup(jobGroup: string): Promise<SysJob[]> {
+    return this.delegate.findMany({
+      where: this.scopeReadWhere({ jobGroup }) as Prisma.SysJobWhereInput,
+      orderBy: { createTime: 'desc' },
+    });
+  }
+
+  /**
+   * 批量更新任务状态
+   */
+  async updateStatusByIds(jobIds: number[], status: string, updateBy: string): Promise<number> {
+    const result = await this.prisma.sysJob.updateMany({
+      where: {
+        jobId: { in: jobIds },
+      },
+      data: {
+        status: status as any,
+        updateBy,
+        updateTime: new Date(),
+      },
+    });
+
+    return result.count;
+  }
+
+  /**
+   * 检查任务名称是否已存在
+   */
+  async existsByJobName(jobName: string, excludeId?: number): Promise<boolean> {
+    const where: Prisma.SysJobWhereInput = { jobName };
+
+    if (excludeId) {
+      where.jobId = { not: excludeId };
+    }
+
+    const count = await this.delegate.count({
+      where: this.scopeReadWhere(where as object) as Prisma.SysJobWhereInput,
+    });
+    return count > 0;
+  }
+}
